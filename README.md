@@ -77,6 +77,14 @@ python -m scitrans_lm gui
 python -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures
 ```
 
+### 7) Evaluate translations (BLEU)
+
+```bash
+python -m scitrans_lm evaluate --ref data/refs.txt --hyp outputs/my_run.txt
+# or compare folders of .txt files with matching names
+python -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
+```
+
 ## Features & Notes
 
 - **YOLO mandatory:** The pipeline requires a YOLO layout model at `data/layout/layout_model.pt`. First-run setup will **download** a DocLayout-style model or let you **train** your own.

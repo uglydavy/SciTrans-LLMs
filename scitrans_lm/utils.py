@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-import re
+
 from typing import Tuple
 
 def parse_page_range(pages: str, total: int) -> Tuple[int, int]:
@@ -25,3 +25,17 @@ def detect_device() -> str:
         return "cuda:0" if torch.cuda.is_available() else "cpu"
     except Exception:
         return "cpu"
+
+
+def boxes_intersect(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float], padding: float = 0.0) -> bool:
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    ax0 -= padding
+    ay0 -= padding
+    ax1 += padding
+    ay1 += padding
+    bx0 -= padding
+    by0 -= padding
+    bx1 += padding
+    by1 += padding
+    return not (ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0)

@@ -27,10 +27,10 @@ def render_overlay(input_pdf: str, output_pdf: str, blocks_out: List[BlockOut], 
         np.insert_image(sp.rect, stream=img_bytes)
         # overlay translated text on original blocks
         for b in page_map.get(pi, []):
+            if not b.text.strip():
+                continue
             rect = fitz.Rect(*b.bbox)
-            # white background rectangle to cover original text
             np.draw_rect(rect, color=(1,1,1), fill=(1,1,1), width=0)
-            # write translated text inside the rectangle
             np.insert_textbox(rect, b.text, fontsize=10, fontname="helv", align=0)
         # ensure contents are wrapped for proper rendering on some versions
         try:

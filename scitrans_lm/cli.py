@@ -1,10 +1,10 @@
 
 from __future__ import annotations
-import typer, sys
+import typer
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 from .pipeline import translate_document
-from .bootstrap import run_all, ensure_layout_model, ensure_default_glossary
+from .bootstrap import ensure_default_glossary, ensure_layout_model, run_all
 from .keys import set_key as store_key
 from . import __version__
 from rich import print as rprint
@@ -47,6 +47,36 @@ def translate(i: Path = typer.Option(..., '--input', '-i', exists=True, file_oka
               preserve_figures: bool = typer.Option(True, '--preserve-figures', help='Preserve figures & formulas')):
     outp = translate_document(str(i), str(o), engine=engine, direction=direction, pages=pages, preserve_figures=preserve_figures)
     rprint(f"[green]✔ Wrote {outp}[/green]")
+
+@app.command()
+def evaluate(ref: Path = typer.Option(..., '--ref', exists=True, help='Reference translation file or directory'),
+             hyp: Path = typer.Option(..., '--hyp', exists=True, help='Hypothesis translation file or directory')):
+    """Compute SacreBLEU between reference(s) and hypothesis."""
+    from .refine.scoring import bleu
+
+    def _collect(p: Path) -> Dict[str, str]:
+        if p.is_file():
+            return {"__single__": p.read_text(encoding="utf-8")}
+        data = {}
+        for child in sorted(p.glob('*')):
+            if child.is_file():
+                data[child.name] = child.read_text(encoding="utf-8")
+        if not data:
+            raise typer.BadParameter(f"No files found under {p}")
+        return data
+
+    refs = _collect(ref)
+    hyps = _collect(hyp)
+    missing = set(refs) - set(hyps)
+    if missing:
+        raise typer.BadParameter(f"Missing hypothesis files for: {', '.join(sorted(missing))}")
+    scores = []
+    for key in sorted(refs):
+        score = bleu(hyps[key], refs[key])
+        scores.append(score)
+        rprint(f"{key}: {score:.2f} BLEU")
+    avg = sum(scores) / len(scores)
+    rprint(f"[bold]Average BLEU: {avg:.2f}[/bold]")
 
 @app.callback()
 def main():
