@@ -36,10 +36,11 @@ def merge_glossaries() -> Dict[str, str]:
     return d
 
 def inject_prompt_instructions(mapping: Dict[str,str], src: str, tgt: str) -> str:
+    prefix = f"Please translate from {src} to {tgt}. Preserve placeholder tokens like [[FORMULA_0001]]."
     if not mapping:
-        return ""
-    pairs = \n.join([f"- '{k}' -> '{v}'" for k, v in list(mapping.items())[:100]])
-    return f"Please translate from {src} to {tgt}. Ensure these terms are enforced as-is:\n{pairs}\n"
+        return prefix + "\n"
+    pairs = "\n".join([f"- '{k}' -> '{v}'" for k, v in list(mapping.items())[:100]])
+    return f"{prefix}\nEnsure these terms are enforced as-is:\n{pairs}\n"
 
 def enforce_post(text: str, mapping: Dict[str, str]) -> str:
     """Simple post-processing: replace exact term matches case-insensitively."""
