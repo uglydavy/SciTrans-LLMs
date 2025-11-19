@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scitrans-lm"
+version = "0.1.0"
+description = "Layout-preserving EN↔FR scientific PDF translator (GUI + CLI)"
+authors = [{name="SciTrans-LM"}]
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.urls]
+Homepage = "https://example.com"
+
+[project.scripts]
+scitranslm = "scitrans_lm.cli:app"

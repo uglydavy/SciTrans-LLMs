@@ -1,0 +1,32 @@
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual envs
+.venv/
+env/
+venv/
+
+# OS
+.DS_Store
+
+# App data
+.scitranslm/
+data/layout/*.pt
+data/glossary/*.csv
+data/glossary/*.txt
+data/cache/*
+*.log
+
+# Keys / config
+config.json
+*.key
+
+# Notebooks
+*.ipynb_checkpoints
