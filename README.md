@@ -39,10 +39,10 @@ pip install -r requirements.txt
 You can run all setup steps now **or** later from GUI.
 
 ```bash
-python -m scitrans_lm setup --all
+python3 -m scitrans_lm setup --all
 # or run only specific steps:
-# python -m scitrans_lm setup --yolo
-# python -m scitrans_lm setup --glossary
+# python3 -m scitrans_lm setup --yolo
+# python3 -m scitrans_lm setup --glossary
 ```
 
 This step ensures `data/layout/layout_model.pt` exists and builds `data/glossary/default_en_fr.csv`.
@@ -51,11 +51,11 @@ If you prefer to train DocLayout-YOLO on your data, see `scitrans_lm/yolo/train.
 ### 4) Store API keys securely (optional, only for online engines)
 
 ```bash
-python -m scitrans_lm set-key openai
-python -m scitrans_lm set-key deepl
-python -m scitrans_lm set-key google
-python -m scitrans_lm set-key deepseek
-python -m scitrans_lm set-key perplexity
+python3 -m scitrans_lm set-key openai
+python3 -m scitrans_lm set-key deepl
+python3 -m scitrans_lm set-key google
+python3 -m scitrans_lm set-key deepseek
+python3 -m scitrans_lm set-key perplexity
 ```
 
 This uses your OS keychain via `keyring` so you won’t be prompted each run.
@@ -64,7 +64,7 @@ For offline-only usage, skip this and choose the `dictionary` engine in GUI/CLI.
 ### 5) Launch GUI (modern web UI)
 
 ```bash
-python -m scitrans_lm gui
+python3 -m scitrans_lm gui
 ```
 
 - **Left:** Upload (drag & drop) the source PDF and preview
@@ -74,15 +74,15 @@ python -m scitrans_lm gui
 ### 6) CLI usage
 
 ```bash
-python -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures
+python3 -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures
 ```
 
 ### 7) Evaluate translations (BLEU)
 
 ```bash
-python -m scitrans_lm evaluate --ref data/refs.txt --hyp outputs/my_run.txt
+python3 -m scitrans_lm evaluate --ref data/refs.txt --hyp outputs/my_run.txt
 # or compare folders of .txt files with matching names
-python -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
+python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 ```
 
 ## Features & Notes
@@ -91,7 +91,7 @@ python -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 - **Placeholder masking:** Mathematical expressions and tables are temporarily replaced with unique tokens before translation and restored after.
 - **Glossary:** Default EN↔FR glossary is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
 - **Engines:** `openai`, `deepl`, `google`, `deepseek`, `perplexity` (pluggable). If a service’s SDK isn’t installed, you’ll get a friendly message.
-- **Evaluation:** Use `python -m scitrans_lm evaluate --ref ref.txt --hyp hyp.txt` for BLEU (SacreBLEU). For document sets, point to folders.
+- **Evaluation:** Use `python3 -m scitrans_lm evaluate --ref ref.txt --hyp hyp.txt` for BLEU (SacreBLEU). For document sets, point to folders.
 - **No dummy/identity in GUI:** Test backends exist for developers but are **hidden** from end users in the GUI.
 
 ## Requirements
@@ -119,6 +119,6 @@ The code is under the **MIT License** (see `LICENSE`). Default dictionary/glossa
 ## Troubleshooting
 
 - **Torch not found / CUDA issues:** Install PyTorch matching your OS/GPU. Then reinstall `ultralytics` if needed.
-- **Model missing:** Run `python -m scitrans_lm setup --yolo` to download/train a layout model.
+- **Model missing:** Run `python3 -m scitrans_lm setup --yolo` to download/train a layout model.
 - **Blank PDF outputs:** Fixed by overlay-render. If you still see blank pages, ensure PyMuPDF ≥ 1.23 and the `wrap_contents` step is invoked.
 - **Figure translation looks odd:** Try enabling *Preserve figures/formulas* (default) so images and equations are not OCR-translated.

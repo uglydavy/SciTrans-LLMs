@@ -32,7 +32,7 @@ class OpenAITranslator(BaseTranslator):
                 from openai import OpenAI
                 self._client = OpenAI(api_key=self.api_key)
             except Exception as e:
-                raise RuntimeError("OpenAI SDK not installed or API key missing. Run: pip install openai && python -m scitrans_lm set-key openai") from e
+                raise RuntimeError("OpenAI SDK not installed or API key missing. Run: pip install openai && python3 -m scitrans_lm set-key openai") from e
 
     def translate(self, texts, src, tgt, prompt: str = "", glossary=None):
         self._client_ok()
@@ -62,7 +62,7 @@ class DeepLTranslator(BaseTranslator):
                 import deepl
                 self._client = deepl.Translator(self.api_key)
             except Exception as e:
-                raise RuntimeError("deepl SDK not installed or API key missing. Run: pip install deepl && python -m scitrans_lm set-key deepl") from e
+                raise RuntimeError("deepl SDK not installed or API key missing. Run: pip install deepl && python3 -m scitrans_lm set-key deepl") from e
 
     def translate(self, texts, src, tgt, prompt: str = "", glossary=None):
         self._client_ok()

@@ -9,7 +9,7 @@ def ensure_layout_model() -> None:
     LAYOUT_DIR.mkdir(parents=True, exist_ok=True)
     if not LAYOUT_MODEL.exists():
         # Create a small placeholder. Real model will be downloaded/trained by setup.
-        LAYOUT_MODEL.write_bytes(b"SciTrans-LM placeholder weights. Run 'python -m scitrans_lm setup --yolo' to download/train.".ljust(1024, b'\0'))
+        LAYOUT_MODEL.write_bytes(b"SciTrans-LM placeholder weights. Run 'python3 -m scitrans_lm setup --yolo' to download/train.".ljust(1024, b'\0'))
 
 def ensure_default_glossary() -> None:
     GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)

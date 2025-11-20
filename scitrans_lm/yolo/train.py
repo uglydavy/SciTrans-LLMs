@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-from pathlib import Path
+
 
 def train(data_yaml: str, epochs: int = 10, model: str = "yolov8n.pt", out_dir: str = "runs/layout") -> None:
     """Train a YOLO model for document layout detection (stub)."""
