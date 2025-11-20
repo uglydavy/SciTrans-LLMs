@@ -1,7 +1,49 @@
 
 from __future__ import annotations
+import os
+import tempfile
+import warnings
+
+import huggingface_hub as hfh
+
+
+def _ensure_hf_folder():
+    """Backport huggingface_hub.HfFolder for versions where it was removed.
+
+    Gradio still imports ``HfFolder`` directly. Newer versions of
+    ``huggingface_hub`` (>1.0) dropped this symbol, which triggers an
+    ImportError before our GUI even starts. We recreate a minimal compatible
+    wrapper so Gradio's import succeeds. Token persistence is best-effort:
+    if ``set_access_token`` is unavailable we emit a warning instructing users
+    to rely on environment variables.
+    """
+
+    if hasattr(hfh, "HfFolder"):
+        return
+
+    class _HfFolder:
+        @staticmethod
+        def get_token():
+            getter = getattr(hfh, "get_token", None)
+            return getter() if callable(getter) else None
+
+        @staticmethod
+        def save_token(token: str):
+            setter = getattr(hfh, "set_access_token", None)
+            if callable(setter):
+                setter(token)
+            else:
+                warnings.warn(
+                    "Cannot persist Hugging Face token; set HUGGINGFACEHUB_TOKEN "
+                    "or HF_TOKEN in your environment instead.",
+                    RuntimeWarning,
+                )
+
+    hfh.HfFolder = _HfFolder
+
+
+_ensure_hf_folder()
 import gradio as gr
-import tempfile, os
 from .pipeline import translate_document
 from .bootstrap import ensure_layout_model, ensure_default_glossary
 

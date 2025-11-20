@@ -12,6 +12,7 @@ keyring>=24.2.0
 pypdf>=3.17.0
 beautifulsoup4>=4.12.2
 lxml>=4.9.3
+huggingface_hub<1.0
 
 # Optional translators (install on demand)
 # openai>=1.13.0
