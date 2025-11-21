@@ -54,3 +54,35 @@ open source,code ouvert
 throughput,débit
 latency,latence
 performance,performance
+differential equation,équation différentielle
+partial differential equation,équation aux dérivées partielles
+integral,intégrale
+derivative,dérivée
+gradient descent,descente de gradient
+hessian,hessien
+matrix,matrice
+vector,vecteur
+scalar,scalaire
+eigenvalue,valeur propre
+eigenvector,vecteur propre
+singular value,valeur singulière
+probabilistic model,modèle probabiliste
+evidence,preuve
+evidence lower bound,borne inférieure de preuve
+normal distribution,distribution normale
+uniform distribution,distribution uniforme
+poisson distribution,distribution de poisson
+binomial distribution,distribution binomiale
+gaussian process,processus gaussien
+reinforcement learning,apprentissage par renforcement
+policy,politique
+value function,fonction de valeur
+reward,récompense
+state space,espace d'états
+action space,espace d'actions
+lipschitz,lipschitz
+entropy,entropie
+mutual information,information mutuelle
+variance reduction,réduction de variance
+bayesian inference,inférence bayésienne
+posterior predictive,prédiction postérieure
