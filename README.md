@@ -4,7 +4,7 @@
 A layout-preserving scientific PDF translator for **English ↔ French** with:
 - Mandatory YOLO layout analysis (DocLayout-style) for figures/tables/formulas
 - Placeholder masking (math/tables) and glossary enforcement
-- Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders) + Offline dictionary mode
+- Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders) + **offline glossary/dictionary fallback**
 - Modern web GUI (Gradio) with drag-and-drop and page-range selection
 - CLI parity for automation
 - Secure API key handling with OS keychain (`keyring`)
@@ -34,7 +34,7 @@ pip install -r requirements.txt
 > **Torch & YOLO:** If PyTorch isn't auto-installed by `ultralytics`, install a wheel appropriate for your system:
 > https://pytorch.org/get-started/locally/
 
-### 3) One-time setup (download model, build default glossary)
+### 3) One-time setup (ensure model + glossary)
 
 You can run all setup steps now **or** later from GUI.
 
@@ -45,8 +45,9 @@ python3 -m scitrans_lm setup --all
 # python3 -m scitrans_lm setup --glossary
 ```
 
-This step ensures `data/layout/layout_model.pt` exists and builds `data/glossary/default_en_fr.csv`.
+This step ensures `data/layout/layout_model.pt` exists and builds a **50+ term default glossary** at `data/glossary/default_en_fr.csv`.
 If you prefer to train DocLayout-YOLO on your data, see `scitrans_lm/yolo/train.py`.
+If networked downloads fail, the app will still generate the built-in glossary so offline dictionary translation keeps working.
 
 ### 4) Store API keys securely (optional, only for online engines)
 
@@ -59,7 +60,7 @@ python3 -m scitrans_lm set-key perplexity
 ```
 
 This uses your OS keychain via `keyring` so you won’t be prompted each run.
-For offline-only usage, skip this and choose the `dictionary` engine in GUI/CLI.
+For offline-only usage, skip this and choose the `dictionary` engine in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes.
 
 ### 5) Launch GUI (modern web UI)
 
@@ -87,10 +88,11 @@ python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 
 ## Features & Notes
 
-- **YOLO mandatory:** The pipeline requires a YOLO layout model at `data/layout/layout_model.pt`. First-run setup will **download** a DocLayout-style model or let you **train** your own.
+- **YOLO mandatory:** The pipeline requires a YOLO layout model at `data/layout/layout_model.pt`. First-run setup will create a placeholder if download/training is unavailable.
 - **Placeholder masking:** Mathematical expressions and tables are temporarily replaced with unique tokens before translation and restored after.
-- **Glossary:** Default EN↔FR glossary is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
+- **Glossary:** A populated EN↔FR glossary (50+ core research terms) is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
 - **Engines:** `openai`, `deepl`, `google`, `deepseek`, `perplexity` (pluggable). If a service’s SDK isn’t installed, you’ll get a friendly message.
+- **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting.
 - **Evaluation:** Use `python3 -m scitrans_lm evaluate --ref ref.txt --hyp hyp.txt` for BLEU (SacreBLEU). For document sets, point to folders.
 - **No dummy/identity in GUI:** Test backends exist for developers but are **hidden** from end users in the GUI.
 
@@ -119,6 +121,6 @@ The code is under the **MIT License** (see `LICENSE`). Default dictionary/glossa
 ## Troubleshooting
 
 - **Torch not found / CUDA issues:** Install PyTorch matching your OS/GPU. Then reinstall `ultralytics` if needed.
-- **Model missing:** Run `python3 -m scitrans_lm setup --yolo` to download/train a layout model.
+- **Model missing:** Run `python3 -m scitrans_lm setup --yolo` to download/train a layout model. If only the placeholder exists, layout detection is skipped gracefully.
 - **Blank PDF outputs:** Fixed by overlay-render. If you still see blank pages, ensure PyMuPDF ≥ 1.23 and the `wrap_contents` step is invoked.
 - **Figure translation looks odd:** Try enabling *Preserve figures/formulas* (default) so images and equations are not OCR-translated.

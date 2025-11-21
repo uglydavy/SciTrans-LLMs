@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 from .bootstrap import ensure_default_glossary, ensure_layout_model
@@ -12,7 +13,7 @@ from .mask import (
 )
 from .refine.postprocess import normalize
 from .render.pdf import BlockOut, render_overlay
-from .translate.backends import get_translator
+from .translate.backends import DictionaryTranslator, get_translator
 from .translate.glossary import (
     enforce_post,
     inject_prompt_instructions,
@@ -74,9 +75,19 @@ def translate_document(
 
     if masked_payloads:
         payload_texts = [item[1] for item in masked_payloads]
-        translated_chunks = translator.translate(
-            payload_texts, src=src, tgt=tgt, prompt=prompt, glossary=glossary
-        )
+        try:
+            translated_chunks = translator.translate(
+                payload_texts, src=src, tgt=tgt, prompt=prompt, glossary=glossary
+            )
+        except Exception as exc:
+            warnings.warn(
+                f"Primary translation backend failed; falling back to offline glossary-only translation. Details: {exc}",
+                RuntimeWarning,
+            )
+            fallback = DictionaryTranslator(glossary)
+            translated_chunks = fallback.translate(
+                payload_texts, src=src, tgt=tgt, prompt=prompt, glossary=glossary
+            )
         for (idx, _, placeholders), chunk in zip(masked_payloads, translated_chunks):
             restored = unmask(normalize(enforce_post(chunk, glossary)), placeholders)
             translated_texts[idx] = restored
