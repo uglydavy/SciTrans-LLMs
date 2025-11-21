@@ -54,9 +54,10 @@ def launch():
     def do_translate(pdf_file, engine, direction, pages, preserve_figures):
         if not pdf_file:
             return None, "Please upload a PDF."
+        pdf_path = pdf_file.name if hasattr(pdf_file, "name") else str(pdf_file)
         out_path = os.path.join(tempfile.gettempdir(), "scitranslm_out.pdf")
         try:
-            translate_document(pdf_file.name, out_path, engine=engine, direction=direction, pages=pages, preserve_figures=preserve_figures)
+            translate_document(pdf_path, out_path, engine=engine, direction=direction, pages=pages, preserve_figures=preserve_figures)
             return out_path, "Done."
         except Exception as e:
             return None, f"Error: {e}"
@@ -66,7 +67,7 @@ def launch():
         with gr.Row():
             with gr.Column():
                 pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
-                engine = gr.Dropdown(choices=["openai", "deepl", "google", "deepseek", "perplexity", "dictionary"], value="dictionary", label="Engine")
+                engine = gr.Dropdown(choices=["openai", "deepl", "google", "google-free", "deepseek", "perplexity", "dictionary"], value="dictionary", label="Engine")
                 direction = gr.Radio(["en-fr", "fr-en"], value="en-fr", label="Direction (EN↔FR)")
                 pages = gr.Textbox(value="all", label="Pages (e.g., all or 1-5)")
                 preserve = gr.Checkbox(value=True, label="Preserve figures & formulas (recommended)")

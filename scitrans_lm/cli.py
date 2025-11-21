@@ -20,13 +20,17 @@ def gui():
 @app.command()
 def setup(all: bool = typer.Option(False, "--all", help="Run all setup steps"),
           yolo: bool = typer.Option(False, "--yolo", help="Ensure/download YOLO layout model"),
-          glossary: bool = typer.Option(False, "--glossary", help="Create default glossary")):
+          glossary: bool = typer.Option(False, "--glossary", help="Create default glossary"),
+          refresh_remote: bool = typer.Option(False, "--refresh-remote", help="Fetch/update remote bilingual glossary (FreeDict by default)"),
+          glossary_url: Optional[str] = typer.Option(None, "--glossary-url", help="Optional custom glossary URL (CSV or TSV)")):
     if all or yolo:
         ensure_layout_model()
         rprint("[green]✔ Layout model placeholder ensured. Run training/downloader to replace with real weights.[/green]")
     if all or glossary:
-        ensure_default_glossary()
+        ensure_default_glossary(refresh_remote=refresh_remote, remote_url=glossary_url)
         rprint("[green]✔ Default glossary created (data/glossary/default_en_fr.csv).[/green]")
+        if refresh_remote:
+            rprint("[green]✔ Remote glossary downloaded into data/glossary/remote_en_fr.csv (if available).[/green]")
     if not (all or yolo or glossary):
         run_all()
 

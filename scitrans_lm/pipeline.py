@@ -32,7 +32,7 @@ def translate_document(
     import fitz
 
     ensure_layout_model()
-    ensure_default_glossary()
+    ensure_default_glossary(refresh_remote=True)
 
     doc = fitz.open(input_pdf)
     total = doc.page_count

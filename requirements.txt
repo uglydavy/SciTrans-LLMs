@@ -13,6 +13,8 @@ pypdf>=3.17.0
 beautifulsoup4>=4.12.2
 lxml>=4.9.3
 huggingface_hub<1.0
+requests>=2.31.0
+googletrans==4.0.0-rc1
 
 # Optional translators (install on demand)
 # openai>=1.13.0
