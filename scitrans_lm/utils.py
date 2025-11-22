@@ -1,7 +1,6 @@
-
 from __future__ import annotations
-
 from typing import Tuple
+
 
 def parse_page_range(pages: str, total: int) -> Tuple[int, int]:
     """Parse '1-5' or 'all' into 0-based inclusive start,end."""
@@ -18,6 +17,7 @@ def parse_page_range(pages: str, total: int) -> Tuple[int, int]:
     # single page
     p = max(1, min(total, int(pages)))
     return (p-1, p-1)
+
 
 def detect_device() -> str:
     try:

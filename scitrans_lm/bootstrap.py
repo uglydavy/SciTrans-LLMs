@@ -4,7 +4,6 @@ import csv
 import warnings
 from typing import Iterable, Tuple
 from .config import LAYOUT_MODEL, DEFAULT_GLOSSARY, LAYOUT_DIR, GLOSSARY_DIR
-from .translate.glossary import download_remote_glossary
 
 # A moderately sized built-in glossary to keep offline translation usable
 _BUILTIN_GLOSSARY: Tuple[Tuple[str, str], ...] = (
@@ -63,38 +62,6 @@ _BUILTIN_GLOSSARY: Tuple[Tuple[str, str], ...] = (
     ("throughput", "débit"),
     ("latency", "latence"),
     ("performance", "performance"),
-    ("differential equation", "équation différentielle"),
-    ("partial differential equation", "équation aux dérivées partielles"),
-    ("integral", "intégrale"),
-    ("derivative", "dérivée"),
-    ("gradient descent", "descente de gradient"),
-    ("hessian", "hessien"),
-    ("matrix", "matrice"),
-    ("vector", "vecteur"),
-    ("scalar", "scalaire"),
-    ("eigenvalue", "valeur propre"),
-    ("eigenvector", "vecteur propre"),
-    ("singular value", "valeur singulière"),
-    ("probabilistic model", "modèle probabiliste"),
-    ("evidence", "preuve"),
-    ("evidence lower bound", "borne inférieure de preuve"),
-    ("normal distribution", "distribution normale"),
-    ("uniform distribution", "distribution uniforme"),
-    ("poisson distribution", "distribution de poisson"),
-    ("binomial distribution", "distribution binomiale"),
-    ("gaussian process", "processus gaussien"),
-    ("reinforcement learning", "apprentissage par renforcement"),
-    ("policy", "politique"),
-    ("value function", "fonction de valeur"),
-    ("reward", "récompense"),
-    ("state space", "espace d'états"),
-    ("action space", "espace d'actions"),
-    ("lipschitz", "lipschitz"),
-    ("entropy", "entropie"),
-    ("mutual information", "information mutuelle"),
-    ("variance reduction", "réduction de variance"),
-    ("bayesian inference", "inférence bayésienne"),
-    ("posterior predictive", "prédiction postérieure"),
 )
 
 
@@ -124,13 +91,8 @@ def ensure_layout_model() -> None:
     )
 
 
-def ensure_default_glossary(min_terms: int = 24, refresh_remote: bool = False, remote_url: str | None = None) -> None:
-    """Ensure the default EN↔FR glossary exists and is reasonably populated.
-
-    If ``refresh_remote`` is True, attempt to download a larger bilingual wordlist
-    (FreeDict by default). Failures are non-fatal and fall back to the built-in
-    seed glossary so offline translation still works.
-    """
+def ensure_default_glossary(min_terms: int = 24) -> None:
+    """Ensure the default EN↔FR glossary exists and is reasonably populated."""
 
     GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
     needs_refresh = True
@@ -144,12 +106,9 @@ def ensure_default_glossary(min_terms: int = 24, refresh_remote: bool = False, r
     if needs_refresh:
         _write_glossary(_BUILTIN_GLOSSARY)
 
-    if refresh_remote:
-        download_remote_glossary(remote_url)
-
 
 def run_all() -> None:
     ensure_layout_model()
-    ensure_default_glossary(refresh_remote=True)
+    ensure_default_glossary()
     print("✔ Setup complete. You can now translate.")
 

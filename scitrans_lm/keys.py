@@ -1,51 +1,91 @@
+"""
+Utility functions for storing and retrieving API keys for translation backends.
+
+This module provides a simple way to persist API keys used by the various
+translation backends in SciTrans‑LM. Keys are stored in a JSON file in the
+user's home directory under ``~/.config/scitrans_llm/keys.json``. If a key is
+not found in the config file, the environment variables corresponding to
+common services are checked.
+
+Users can also set keys at runtime using the ``set_key`` function. This will
+create the config directory and file if necessary and persist the key.
+
+Note: the original upstream project includes more advanced key management via
+the CLI. Here we implement a minimal subset that satisfies the needs of the
+translation backends.
+"""
 
 from __future__ import annotations
-import os, json
+import json
+import os
 from pathlib import Path
 from typing import Optional
 
-try:
-    import keyring
-except Exception:
-    keyring = None
+# Path to the keys configuration file. Use a dedicated directory under ~/.config
+# to avoid cluttering the user's home directory.
+CONFIG_DIR = Path(os.path.expanduser("~/.config/scitrans_llm"))
+CONFIG_FILE = CONFIG_DIR / "keys.json"
 
-CONFIG_DIR = Path.home() / ".scitranslm"
-CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE = CONFIG_DIR / "config.json"
-
-def _load_cfg() -> dict:
-    if CONFIG_FILE.exists():
-        try:
-            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
-
-def _save_cfg(cfg: dict) -> None:
-    CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-
-def set_key(service: str, secret: str) -> None:
-    if keyring is not None:
-        keyring.set_password("scitrans-lm", service, secret)
-    else:
-        cfg = _load_cfg()
-        cfg.setdefault("keys", {})[service] = secret
-        _save_cfg(cfg)
 
 def get_key(service: str) -> Optional[str]:
-    # try keyring
-    if keyring is not None:
-        try:
-            val = keyring.get_password("scitrans-lm", service)
-            if val:
-                return val
-        except Exception:
-            pass
-    # fallback env
-    env_key = os.getenv(f"{service.upper()}_API_KEY") or os.getenv(f"{service.upper()}_KEY")
-    if env_key:
-        return env_key
-    # fallback config file
-    cfg = _load_cfg()
-    return (cfg.get("keys") or {}).get(service)
+    """Retrieve the API key for a given translation service.
 
+    Lookup proceeds in the following order:
+    1. Environment variables matching common service names (e.g. ``OPENAI_API_KEY``).
+    2. The JSON config file ``keys.json`` under ``~/.config/scitrans_llm``.
+
+    Args:
+        service: Name of the service (e.g. ``openai``, ``deepl``).
+
+    Returns:
+        The API key if found, otherwise ``None``.
+    """
+    service = (service or "").lower()
+    # Mapping of service names to environment variable names
+    env_map = {
+        "openai": "OPENAI_API_KEY",
+        "deepl": "DEEPL_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "perplexity": "PERPLEXITY_API_KEY",
+    }
+    env_var = env_map.get(service)
+    if env_var and os.getenv(env_var):
+        return os.getenv(env_var)
+    # Read from config file if it exists
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Keys may be stored by service name directly
+            return data.get(service)
+        except Exception:
+            # If the file is corrupt or unreadable, ignore and return None
+            return None
+    return None
+
+
+def set_key(service: str, key: str) -> None:
+    """Persist the API key for a translation service.
+
+    This function writes the provided key to the JSON config file. If the
+    directory does not exist, it is created. Existing keys for other services
+    are preserved.
+
+    Args:
+        service: Name of the service (e.g. ``openai``).
+        key: The API key string to store.
+    """
+    service = (service or "").lower()
+    # Ensure the config directory exists
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    data = {}
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+        except Exception:
+            data = {}
+    data[service] = key
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)

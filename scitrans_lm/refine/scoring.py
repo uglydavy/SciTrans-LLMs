@@ -1,6 +1,5 @@
-
 from __future__ import annotations
-from typing import List
+
 def bleu(hyp: str, ref: str) -> float:
     try:
         import sacrebleu

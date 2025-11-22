@@ -1,7 +1,6 @@
 """Utilities for masking and preserving non-translatable content."""
 
 from __future__ import annotations
-
 import re
 from typing import List, Sequence, Tuple
 
@@ -18,14 +17,11 @@ MATH_PATTERNS: Sequence[re.Pattern[str]] = (
 
 def mask_protected_segments(text: str) -> Tuple[str, List[Tuple[str, str]]]:
     """Replace inline formulas/code with placeholders."""
-
     placeholders: List[Tuple[str, str]] = []
-
     def _repl(match: re.Match[str]) -> str:
         token = PLACEHOLDER_TEMPLATE.format(len(placeholders) + 1)
         placeholders.append((token, match.group(0)))
         return token
-
     masked = text
     for pattern in MATH_PATTERNS:
         masked = pattern.sub(_repl, masked)
@@ -34,7 +30,6 @@ def mask_protected_segments(text: str) -> Tuple[str, List[Tuple[str, str]]]:
 
 def unmask(text: str, placeholders: Sequence[Tuple[str, str]]) -> str:
     """Restore placeholder tokens with their original content."""
-
     restored = text
     for token, original in placeholders:
         restored = restored.replace(token, original)
@@ -63,4 +58,3 @@ def looks_like_numeric_table(text: str) -> bool:
         if digits / max(1, len(line)) > 0.45:
             numeric_lines += 1
     return numeric_lines / len(lines) > 0.6
-

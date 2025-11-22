@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 APP_NAME = "SciTrans-LM"
@@ -10,6 +9,6 @@ CACHE_DIR = DATA_DIR / "cache"
 LAYOUT_MODEL = LAYOUT_DIR / "layout_model.pt"
 DEFAULT_GLOSSARY = GLOSSARY_DIR / "default_en_fr.csv"
 
-# Create dirs at import-time (safe if already exist)
+# Ensure directories exist at import time
 for d in (DATA_DIR, LAYOUT_DIR, GLOSSARY_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)

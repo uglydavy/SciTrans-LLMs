@@ -1,8 +1,6 @@
-
 from __future__ import annotations
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 from dataclasses import dataclass
-import io
 import fitz  # PyMuPDF
 
 @dataclass
@@ -17,7 +15,6 @@ def render_overlay(input_pdf: str, output_pdf: str, blocks_out: List[BlockOut], 
     page_map = {pi: [] for pi in pages}
     for b in blocks_out:
         page_map.setdefault(b.page_index, []).append(b)
-
     for i, pi in enumerate(pages):
         sp = src.load_page(pi)
         np = out.new_page(width=sp.rect.width, height=sp.rect.height)
@@ -34,7 +31,7 @@ def render_overlay(input_pdf: str, output_pdf: str, blocks_out: List[BlockOut], 
             np.insert_textbox(rect, b.text, fontsize=10, fontname="helv", align=0)
         # ensure contents are wrapped for proper rendering on some versions
         try:
-            np.wrap_contents()  # public API
+            np.wrap_contents()
         except Exception:
             pass
     out.save(output_pdf)

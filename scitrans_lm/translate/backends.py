@@ -2,7 +2,6 @@ from __future__ import annotations
 import re
 import warnings
 from typing import Dict, List
-
 from ..keys import get_key
 
 
@@ -97,35 +96,9 @@ class DeepLTranslator(BaseTranslator):
 
 
 class GoogleTranslator(BaseTranslator):
-    def __init__(self):
-        try:
-            from googletrans import Translator  # type: ignore
-        except Exception as exc:  # pragma: no cover - runtime import
-            raise RuntimeError(
-                "googletrans not installed. Run: pip install googletrans==4.0.0-rc1"
-            ) from exc
-        self._client = Translator()
-
-    @staticmethod
-    def _lang(code: str) -> str:
-        code = (code or "en").lower()
-        if code.startswith("fr"):
-            return "fr"
-        return "en"
-
     def translate(self, texts, src, tgt, prompt: str = "", glossary=None):
-        src_code, tgt_code = self._lang(src), self._lang(tgt)
-        out: List[str] = []
-        for t in texts:
-            try:
-                res = self._client.translate(t, src=src_code, dest=tgt_code)
-                translated = res.text
-            except Exception as exc:  # pragma: no cover - network failure fallback
-                raise RuntimeError(
-                    "Google free translation failed (network / throttling)."
-                ) from exc
-            out.append(translated)
-        return out
+        # Placeholder - require google-cloud-translate setup
+        raise RuntimeError("Google Translate backend not configured. Install google-cloud-translate and implement credentials.")
 
 
 class DeepSeekTranslator(BaseTranslator):
@@ -145,7 +118,7 @@ def get_translator(name: str, dictionary: Dict[str, str] | None = None) -> BaseT
             return OpenAITranslator()
         if name in ("deepl",):
             return DeepLTranslator()
-        if name in ("google", "google-free", "googletrans"):
+        if name in ("google",):
             return GoogleTranslator()
         if name in ("deepseek",):
             return DeepSeekTranslator()

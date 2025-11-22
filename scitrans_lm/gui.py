@@ -14,7 +14,7 @@ def _ensure_hf_folder():
     ``huggingface_hub`` (>1.0) dropped this symbol, which triggers an
     ImportError before our GUI even starts. We recreate a minimal compatible
     wrapper so Gradio's import succeeds. Token persistence is best-effort:
-    if ``set_access_token`` is unavailable we emit a warning instructing users
+    if ``set_access_token`` is unavailable, we emit a warning instructing users
     to rely on environment variables.
     """
 
@@ -54,10 +54,9 @@ def launch():
     def do_translate(pdf_file, engine, direction, pages, preserve_figures):
         if not pdf_file:
             return None, "Please upload a PDF."
-        pdf_path = pdf_file.name if hasattr(pdf_file, "name") else str(pdf_file)
         out_path = os.path.join(tempfile.gettempdir(), "scitranslm_out.pdf")
         try:
-            translate_document(pdf_path, out_path, engine=engine, direction=direction, pages=pages, preserve_figures=preserve_figures)
+            translate_document(pdf_file.name, out_path, engine=engine, direction=direction, pages=pages, preserve_figures=preserve_figures)
             return out_path, "Done."
         except Exception as e:
             return None, f"Error: {e}"
@@ -67,7 +66,7 @@ def launch():
         with gr.Row():
             with gr.Column():
                 pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
-                engine = gr.Dropdown(choices=["openai", "deepl", "google", "google-free", "deepseek", "perplexity", "dictionary"], value="dictionary", label="Engine")
+                engine = gr.Dropdown(choices=["openai", "deepl", "google", "deepseek", "perplexity", "dictionary"], value="dictionary", label="Engine")
                 direction = gr.Radio(["en-fr", "fr-en"], value="en-fr", label="Direction (EN↔FR)")
                 pages = gr.Textbox(value="all", label="Pages (e.g., all or 1-5)")
                 preserve = gr.Checkbox(value=True, label="Preserve figures & formulas (recommended)")
@@ -78,7 +77,13 @@ def launch():
 
         go.click(do_translate, inputs=[pdf, engine, direction, pages, preserve], outputs=[out_pdf, status])
 
-    demo.launch()
+    try:
+        demo.launch()
+    except ValueError as e:
+        if "shareable link must be created" in str(e):
+            demo.launch(share=True, show_api=False)
+        else:
+            raise
 
 if __name__ == "__main__":
     launch()

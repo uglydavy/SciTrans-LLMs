@@ -1,9 +1,8 @@
-
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any, Optional
-from pathlib import Path
+from typing import List, Tuple
 import fitz  # PyMuPDF
+
 
 @dataclass
 class Block:
@@ -12,11 +11,12 @@ class Block:
     text: str
     kind: str = "paragraph"  # simple default
 
+
 def extract_blocks(pdf_path: str, page_indices: List[int]) -> Tuple[List[Block], Tuple[int, int]]:
     """Extract basic text blocks (bbox + text) for specified pages using PyMuPDF.
 
     Returns (blocks, size) where size=(width,height) of last page processed (for reference).
-"""
+    """
     blocks: List[Block] = []
     doc = fitz.open(pdf_path)
     size = (0, 0)
