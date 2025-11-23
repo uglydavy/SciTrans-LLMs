@@ -18,9 +18,9 @@ def render_overlay(input_pdf: str, output_pdf: str, blocks_out: List[BlockOut], 
     for i, pi in enumerate(pages):
         sp = src.load_page(pi)
         np = out.new_page(width=sp.rect.width, height=sp.rect.height)
-        # draw original page as background
-        pix = sp.get_pixmap(alpha=False)
-        img_bytes = pix.tobytes("png")
+        # draw original page as background, compressing to keep downloads lean
+        pix = sp.get_pixmap(alpha=False, matrix=fitz.Matrix(1, 1))
+        img_bytes = pix.tobytes("jpeg", quality=80)
         np.insert_image(sp.rect, stream=img_bytes)
         # overlay translated text on original blocks
         for b in page_map.get(pi, []):
@@ -34,6 +34,6 @@ def render_overlay(input_pdf: str, output_pdf: str, blocks_out: List[BlockOut], 
             np.wrap_contents()
         except Exception:
             pass
-    out.save(output_pdf)
+    out.save(output_pdf, deflate=True, garbage=4)
     out.close()
     src.close()
