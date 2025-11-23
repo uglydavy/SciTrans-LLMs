@@ -9,6 +9,7 @@ A layout-preserving scientific PDF translator for **English ↔ French** with:
 - CLI parity for automation
 - Secure API key handling with OS keychain (`keyring`)
 - Evaluation (SacreBLEU) + refine (spacing fixes, glossary post-processing)
+- Iterative prompt-guided refinement (up to 4 passes) for more reliable offline/online translations
 - Cross-platform: macOS, Linux, Windows
 
 > **Note:** Model files (YOLO weights) and large bilingual corpora are not bundled in this ZIP to keep it light. The first-run **setup** will download/train as needed and create default glossaries.
