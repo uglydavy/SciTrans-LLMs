@@ -11,11 +11,11 @@ from .mask import (
     unmask,
 )
 from .refine.postprocess import normalize
+from .refine.prompting import build_prompt, evaluate_translation, refine_prompt
 from .render.pdf import BlockOut, render_overlay
 from .translate.backends import get_translator
 from .translate.glossary import (
     enforce_post,
-    inject_prompt_instructions,
     merge_glossaries,
 )
 from .utils import boxes_intersect, parse_page_range
@@ -52,7 +52,7 @@ def translate_document(
     src, tgt = ("English", "French") if direction.lower() == "en-fr" else ("French", "English")
 
     translator = get_translator(engine, dictionary=glossary)
-    prompt = inject_prompt_instructions(glossary, src, tgt)
+    base_prompt = build_prompt(src, tgt, glossary)
 
     translated_texts: List[Optional[str]] = [None] * len(blocks)
     masked_payloads: List[Tuple[int, str, List[Tuple[str, str]]]] = []
@@ -73,12 +73,17 @@ def translate_document(
         masked_payloads.append((idx, masked_text, placeholders))
 
     if masked_payloads:
-        payload_texts = [item[1] for item in masked_payloads]
-        translated_chunks = translator.translate(
-            payload_texts, src=src, tgt=tgt, prompt=prompt, glossary=glossary
-        )
-        for (idx, _, placeholders), chunk in zip(masked_payloads, translated_chunks):
-            restored = unmask(normalize(enforce_post(chunk, glossary)), placeholders)
+        translated_chunks = []
+        for idx, masked_text, placeholders in masked_payloads:
+            translated = _iterative_translate(
+                translator=translator,
+                text=masked_text,
+                src=src,
+                tgt=tgt,
+                base_prompt=base_prompt,
+                glossary=glossary,
+            )
+            restored = unmask(normalize(enforce_post(translated, glossary)), placeholders)
             translated_texts[idx] = restored
 
     out_blocks = []
@@ -168,3 +173,27 @@ def _label_blocks_with_layout(blocks: List[Block], layout: Dict[int, List["Detec
                 best_score = det.score
         if best_label:
             block.kind = best_label
+
+
+def _iterative_translate(
+    translator,
+    text: str,
+    src: str,
+    tgt: str,
+    base_prompt: str,
+    glossary: Dict[str, str],
+    max_loops: int = 4,
+) -> str:
+    """Run up to `max_loops` attempts, tightening the prompt when quality is low."""
+
+    prompt = base_prompt
+    best = ""
+    for i in range(max_loops):
+        attempt = translator.translate([text], src=src, tgt=tgt, prompt=prompt, glossary=glossary)[0]
+        evaluation = evaluate_translation(text, attempt)
+        if evaluation.acceptable:
+            best = attempt
+            break
+        best = attempt or best
+        prompt = refine_prompt(base_prompt, evaluation, iteration=i)
+    return best or text

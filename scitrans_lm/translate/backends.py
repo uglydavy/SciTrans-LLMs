@@ -11,8 +11,47 @@ class BaseTranslator:
 
 
 class DictionaryTranslator(BaseTranslator):
+    """Lightweight offline translator with aggressive glossary usage.
+
+    The previous implementation performed a single pass of regex
+    substitutions which often resulted in English output or empty strings
+    after masking. This variant performs:
+
+    - Phrase-first replacement (longest match wins)
+    - Word-level fallbacks with a small built-in seed lexicon
+    - Case-aware replacement so titles/subtitles keep capitalization
+    - A safety fallback that returns the source text if everything else
+      collapses, preventing blank overlays in the renderer.
+    """
+
+    _BASE_LEXICON = {
+        # Common helpers and science terms to ensure visible output offline
+        "the": "le",
+        "a": "un",
+        "and": "et",
+        "of": "de",
+        "for": "pour",
+        "with": "avec",
+        "results": "résultats",
+        "methods": "méthodes",
+        "introduction": "introduction",
+        "conclusion": "conclusion",
+        "analysis": "analyse",
+        "figure": "figure",
+        "table": "tableau",
+        "equation": "équation",
+        "data": "données",
+        "model": "modèle",
+        "experiment": "expérience",
+        "samples": "échantillons",
+        "abstract": "résumé",
+        "references": "références",
+    }
+
     def __init__(self, mapping: Dict[str, str]):
-        self.mapping = {k.lower(): v for k, v in (mapping or {}).items()}
+        merged = dict(self._BASE_LEXICON)
+        merged.update({k.lower(): v for k, v in (mapping or {}).items()})
+        self.mapping = merged
 
     def _patterns(self, glossary: Dict[str, str] | None):
         merged = dict(self.mapping)
@@ -21,14 +60,38 @@ class DictionaryTranslator(BaseTranslator):
         terms = sorted(merged.items(), key=lambda kv: len(kv[0]), reverse=True)
         return [(re.compile(rf"(?i)\\b{re.escape(src)}\\b"), tgt) for src, tgt in terms]
 
+    def _case_preserving_replace(self, source: str, replacement: str) -> str:
+        if source.isupper():
+            return replacement.upper()
+        if source[0].isupper():
+            return replacement.capitalize()
+        return replacement
+
+    def _translate_words(self, text: str, glossary: Dict[str, str] | None) -> str:
+        glossary = glossary or {}
+        def convert(token: str) -> str:
+            cleaned = re.sub(r"[^\w\-]", "", token)
+            lower = cleaned.lower()
+            if not lower:
+                return token
+            replacement = glossary.get(lower) or self.mapping.get(lower)
+            if not replacement:
+                return token
+            return token.replace(cleaned, self._case_preserving_replace(cleaned, replacement))
+
+        parts = re.split(r"(\W)", text)
+        return "".join(convert(p) if i % 2 == 0 else p for i, p in enumerate(parts))
+
     def translate(self, texts, src, tgt, prompt: str = "", glossary=None):
         patterns = self._patterns(glossary)
         out = []
         for t in texts:
             replaced = t
             for pat, repl in patterns:
-                replaced = pat.sub(repl, replaced)
-            out.append(replaced)
+                replaced = pat.sub(lambda m, repl=repl: self._case_preserving_replace(m.group(0), repl), replaced)
+            replaced = self._translate_words(replaced, glossary)
+            cleaned = replaced.strip() or t
+            out.append(cleaned)
         return out
 
 

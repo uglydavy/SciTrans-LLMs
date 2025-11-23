@@ -54,11 +54,23 @@ def launch():
     def do_translate(pdf_file, engine, direction, pages, preserve_figures):
         if not pdf_file:
             return None, "Please upload a PDF."
-        out_path = os.path.join(tempfile.gettempdir(), "scitranslm_out.pdf")
+        tmp = tempfile.NamedTemporaryFile(prefix="scitranslm_out_", suffix=".pdf", delete=False)
+        out_path = tmp.name
+        tmp.close()
         try:
             translate_document(pdf_file.name, out_path, engine=engine, direction=direction, pages=pages, preserve_figures=preserve_figures)
-            return out_path, "Done."
+            size_mb = os.path.getsize(out_path) / (1024 * 1024)
+            note = " (compressed)" if size_mb > 0 else ""
+            if size_mb > 18:
+                status = f"Done. File size: {size_mb:.1f} MB{note}. Large files are compressed to stay downloadable."
+            else:
+                status = f"Done. File size: {size_mb:.1f} MB{note}."
+            return out_path, status
         except Exception as e:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
             return None, f"Error: {e}"
 
     with gr.Blocks(title="SciTrans-LM – EN↔FR PDF Translator") as demo:

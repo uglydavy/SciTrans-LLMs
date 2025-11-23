@@ -91,12 +91,18 @@ def ensure_layout_model() -> None:
     )
 
 
-def ensure_default_glossary(min_terms: int = 24) -> None:
-    """Ensure the default EN↔FR glossary exists and is reasonably populated."""
+def ensure_default_glossary(min_terms: int = 24, refresh_remote: bool = False) -> None:
+    """Ensure the default EN↔FR glossary exists and is reasonably populated.
+
+    ``refresh_remote`` is accepted for forward compatibility with callers that
+    wish to re-download or rebuild the glossary. In this lightweight fork we
+    simply regenerate the built-in glossary when refresh is requested or when
+    the existing file is missing/too small.
+    """
 
     GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
-    needs_refresh = True
-    if DEFAULT_GLOSSARY.exists():
+    needs_refresh = refresh_remote
+    if DEFAULT_GLOSSARY.exists() and not refresh_remote:
         try:
             with DEFAULT_GLOSSARY.open("r", encoding="utf-8") as f:
                 term_count = sum(1 for _ in csv.DictReader(f))
