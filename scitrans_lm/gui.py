@@ -37,13 +37,34 @@ def _ensure_hf_folder():
 
 _ensure_hf_folder()
 import gradio as gr
+import gradio_client.utils as grc_utils
 
 from .pipeline import translate_document
 from .bootstrap import ensure_layout_model, ensure_default_glossary
 from .config import GLOSSARY_DIR
 
 
+def _patch_gradio_json_schema():
+    """Work around gradio_client assuming JSON Schema objects are dicts.
+
+    Some gradio builds emit boolean ``additionalProperties`` flags. Newer
+    gradio_client releases handle these, but older ones raise ``TypeError``
+    when they try to iterate over the boolean. We coerce those booleans to
+    permissive ``any``/""never"" strings so API schema generation succeeds.
+    """
+
+    original_get_type = grc_utils.get_type
+
+    def safe_get_type(schema):  # type: ignore[override]
+        if isinstance(schema, bool):
+            return "boolean" if schema else "null"
+        return original_get_type(schema)
+
+    grc_utils.get_type = safe_get_type
+
+
 def launch():
+    _patch_gradio_json_schema()
     ensure_layout_model()
     ensure_default_glossary()
 
