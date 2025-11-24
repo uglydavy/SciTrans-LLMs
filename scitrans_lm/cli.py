@@ -104,10 +104,13 @@ def inspect(
     doc.close()
     s, e = parse_page_range(pages, total)
     page_indices = list(range(s, e + 1))
-    summaries = analyze_document(str(i), page_indices)
+    notes = []
+    summaries = analyze_document(str(i), page_indices, notes=notes)
     for s in summaries[:20]:
         rprint(f"p{s.page_index+1}: [{s.kind}] {s.text_preview}")
     rprint(f"[bold]Total blocks analyzed:[/bold] {len(summaries)}")
+    for note in notes:
+        rprint(f"[yellow]- {note}[/yellow]")
     if json_output:
         json_output.write_text(json.dumps([s.__dict__ for s in summaries], indent=2), encoding="utf-8")
         rprint(f"[green]✔ Saved analysis to {json_output}[/green]")

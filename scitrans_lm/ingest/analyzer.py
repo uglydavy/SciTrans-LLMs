@@ -30,8 +30,8 @@ def classify_block(block: Block) -> str:
     return block.kind or "paragraph"
 
 
-def analyze_document(pdf_path: str, pages: List[int]) -> List[BlockSummary]:
-    blocks, _ = extract_blocks(pdf_path, pages)
+def analyze_document(pdf_path: str, pages: List[int], notes=None) -> List[BlockSummary]:
+    blocks, _ = extract_blocks(pdf_path, pages, notes=notes)
     summaries: List[BlockSummary] = []
     for blk in blocks:
         kind = classify_block(blk)

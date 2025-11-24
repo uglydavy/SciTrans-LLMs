@@ -3,8 +3,12 @@ import os
 import shutil
 import tempfile
 import warnings
+from collections import Counter
 from pathlib import Path
+from textwrap import shorten
 
+import fitz
+import requests
 import huggingface_hub as hfh
 
 
@@ -39,9 +43,11 @@ _ensure_hf_folder()
 import gradio as gr
 import gradio_client.utils as grc_utils
 
-from .pipeline import translate_document
+from .ingest.analyzer import analyze_document
+from .pipeline import translate_document, _collect_layout_detections
 from .bootstrap import ensure_layout_model, ensure_default_glossary
 from .config import GLOSSARY_DIR
+from .utils import parse_page_range
 
 
 def _patch_gradio_json_schema():
@@ -72,7 +78,7 @@ def launch():
 
     def do_translate(pdf_file, engine, direction, pages, preserve_figures, quality_loops, enable_rerank):
         if not pdf_file:
-            return None, "Please upload a PDF.", "", ""
+            return None, "Please upload a PDF.", "", "", ""
         tmp = tempfile.NamedTemporaryFile(prefix="scitranslm_out_", suffix=".pdf", delete=False)
         out_path = tmp.name
         tmp.close()
@@ -107,13 +113,79 @@ def launch():
             if user_events:
                 status_lines.append(" • ".join(user_events))
             preview_text = _preview_pdf_text(out_path, max_chars=1400)
-            return out_path, "\n".join(status_lines), summary, preview_text
+            log_text = "\n".join(events[-120:])
+            return out_path, "\n".join(status_lines), summary, preview_text, log_text
         except Exception as e:
             try:
                 os.unlink(out_path)
             except OSError:
                 pass
-            return None, f"Error: {e}", "", ""
+            log_text = "\n".join(events[-120:]) if events else ""
+            return None, f"Error: {e}", "", "", log_text
+
+    def fetch_remote_pdf(url_text: str):
+        if not url_text or not url_text.strip():
+            return gr.File.update(value=None), "Enter a direct PDF link to download."
+        try:
+            resp = requests.get(url_text.strip(), timeout=20)
+            resp.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            return gr.File.update(value=None), f"Download failed: {exc}"
+
+        content_type = resp.headers.get("content-type", "").lower()
+        note = ""
+        if "pdf" not in content_type:
+            note = " (warning: response is not labeled as a PDF)"
+
+        tmp = tempfile.NamedTemporaryFile(prefix="scitranslm_remote_", suffix=".pdf", delete=False)
+        tmp.write(resp.content)
+        tmp.flush()
+        tmp.close()
+        size_mb = len(resp.content) / (1024 * 1024)
+        return gr.File.update(value=tmp.name), f"Fetched {size_mb:.2f} MB from URL.{note}"
+
+    def inspect_layout(pdf_file, pages, preserve_figures):
+        if not pdf_file:
+            return "Upload or fetch a PDF, then click Analyze."
+        try:
+            doc = fitz.open(pdf_file.name)
+        except Exception as exc:  # noqa: BLE001
+            return f"Could not open PDF: {exc}"
+
+        total = doc.page_count
+        doc.close()
+        s, e = parse_page_range(pages, total)
+        page_indices = list(range(s, e + 1))
+
+        notes: list[str] = []
+        summaries = analyze_document(pdf_file.name, page_indices, notes=notes)
+        counts = Counter(s.kind for s in summaries)
+        count_lines = [f"{k}: {v}" for k, v in sorted(counts.items(), key=lambda kv: kv[0])]
+        samples = [f"p{b.page_index+1} [{b.kind}] {shorten(b.text_preview, width=110)}" for b in summaries[:12]]
+
+        layout_info = ""
+        if preserve_figures:
+            detections = _collect_layout_detections(pdf_file.name, page_indices)
+            if detections:
+                label_counts = Counter(det.label for dets in detections.values() for det in dets)
+                layout_info = "YOLO detections: " + ", ".join(
+                    f"{k}={v}" for k, v in sorted(label_counts.items(), key=lambda kv: kv[0])
+                )
+
+        lines = [f"Analyzed pages {s+1}-{e+1} (total blocks: {len(summaries)})."]
+        if count_lines:
+            lines.append("Kinds → " + ", ".join(count_lines))
+        if layout_info:
+            lines.append(layout_info)
+        if notes:
+            lines.append("Notes:")
+            lines.extend([f"- {n}" for n in notes])
+        lines.append("Samples:")
+        if samples:
+            lines.extend([" • " + s for s in samples])
+        else:
+            lines.append(" • No text blocks detected.")
+        return "\n".join(lines)
 
     def upload_glossary(file_obj):
         if not file_obj:
@@ -133,39 +205,62 @@ def launch():
             "<div style='text-align:center'><h2>SciTrans-LM – English ↔ French PDF Translator</h2>"
             "<p>Layout-preserving translation with glossary enforcement, refinement, and offline fallbacks.</p></div>"
         )
-        with gr.Row(equal_height=True):
-            with gr.Column(scale=6):
-                pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
-                with gr.Row():
-                    engine = gr.Dropdown(
-                        choices=["dictionary", "google-free", "openai", "deepl", "google", "deepseek", "perplexity"],
-                        value="dictionary",
-                        label="Engine",
-                        info="Pick a backend. Dictionary and Google-free do not require API keys.",
-                    )
-                    direction = gr.Radio(["en-fr", "fr-en"], value="en-fr", label="Direction")
-                with gr.Row():
-                    pages = gr.Textbox(value="all", label="Pages", placeholder="all or 1-5")
-                    preserve = gr.Checkbox(value=True, label="Preserve figures/formulas")
-                with gr.Row():
-                    quality_loops = gr.Slider(1, 5, value=3, step=1, label="Refinement loops")
-                    enable_rerank = gr.Checkbox(value=True, label="Rerank candidates")
-                go = gr.Button("Translate", variant="primary")
-                status = gr.Markdown("<div id='status-text'><strong>Ready.</strong></div>")
-                summary = gr.Markdown("", elem_id="summary-text")
-            with gr.Column(scale=5):
-                preview = gr.Textbox(label="Preview (first pages)", lines=10, interactive=False, elem_id="preview-box")
-                out_pdf = gr.File(label="Download translated PDF", interactive=False)
-                with gr.Accordion("Glossary options", open=False):
-                    glossary_upload = gr.File(label="Upload custom glossary (.csv)")
-                    glossary_status = gr.Markdown("Glossary: built-in 50+ terms. Upload to extend.")
 
-        go.click(
-            do_translate,
-            inputs=[pdf, engine, direction, pages, preserve, quality_loops, enable_rerank],
-            outputs=[out_pdf, status, summary, preview],
-        )
-        glossary_upload.change(upload_glossary, inputs=[glossary_upload], outputs=[glossary_status])
+        with gr.Tabs():
+            with gr.Tab("Translate"):
+                with gr.Row(equal_height=True):
+                    with gr.Column(scale=6):
+                        pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
+                        with gr.Row():
+                            url_box = gr.Textbox(label="Or fetch via URL", placeholder="https://example.com/paper.pdf")
+                            fetch_btn = gr.Button("Download", variant="secondary")
+                        link_status = gr.Markdown("Upload or download a PDF to begin.")
+                        with gr.Row():
+                            engine = gr.Dropdown(
+                                choices=["dictionary", "google-free", "openai", "deepl", "google", "deepseek", "perplexity"],
+                                value="dictionary",
+                                label="Engine",
+                                info="Pick a backend. Dictionary and Google-free do not require API keys.",
+                            )
+                            direction = gr.Radio(["en-fr", "fr-en"], value="en-fr", label="Direction")
+                        with gr.Row():
+                            pages = gr.Textbox(value="all", label="Pages", placeholder="all or 1-5")
+                            preserve = gr.Checkbox(value=True, label="Preserve figures/formulas")
+                        with gr.Row():
+                            quality_loops = gr.Slider(1, 5, value=3, step=1, label="Refinement loops")
+                            enable_rerank = gr.Checkbox(value=True, label="Rerank candidates")
+                        go = gr.Button("Translate", variant="primary")
+                        status = gr.Markdown("<div id='status-text'><strong>Ready.</strong></div>")
+                        summary = gr.Markdown("", elem_id="summary-text")
+                        pipeline_log = gr.Textbox(
+                            label="Pipeline log (latest run)",
+                            lines=8,
+                            interactive=False,
+                            placeholder="Progress, OCR fallbacks, and rerank steps will appear here after translation.",
+                        )
+                    with gr.Column(scale=5):
+                        preview = gr.Textbox(label="Preview (first pages)", lines=10, interactive=False, elem_id="preview-box")
+                        out_pdf = gr.File(label="Download translated PDF", interactive=False)
+                        with gr.Accordion("Glossary options", open=False):
+                            glossary_upload = gr.File(label="Upload custom glossary (.csv)")
+                            glossary_status = gr.Markdown("Glossary: built-in 50+ terms. Upload to extend.")
+
+                fetch_btn.click(fetch_remote_pdf, inputs=[url_box], outputs=[pdf, link_status])
+                go.click(
+                    do_translate,
+                    inputs=[pdf, engine, direction, pages, preserve, quality_loops, enable_rerank],
+                    outputs=[out_pdf, status, summary, preview, pipeline_log],
+                )
+                glossary_upload.change(upload_glossary, inputs=[glossary_upload], outputs=[glossary_status])
+
+            with gr.Tab("Debug / QA"):
+                gr.Markdown(
+                    "View how the PDF is segmented and when OCR fallbacks trigger. Use this tab to verify headers, lists, and captions before translating."
+                )
+                inspect_btn = gr.Button("Analyze layout & extraction", variant="secondary")
+                layout_summary = gr.Textbox(label="Layout summary", lines=14, interactive=False)
+
+                inspect_btn.click(inspect_layout, inputs=[pdf, pages, preserve], outputs=[layout_summary])
 
     try:
         demo.launch()
