@@ -50,7 +50,7 @@ def translate_document(
     page_indices = list(range(s, e + 1))
 
     _notify(progress, f"Parsing layout from pages {s+1}-{e+1}…")
-    blocks, _size = extract_blocks(input_pdf, page_indices)
+    blocks, _size = extract_blocks(input_pdf, page_indices, progress=progress)
 
     layout_detections = (
         _collect_layout_detections(input_pdf, page_indices, progress)
