@@ -5,7 +5,7 @@ A layout-preserving scientific PDF translator for **English ↔ French** with:
 - Placeholder masking (math/tables) and glossary enforcement
 - Translation memory + adaptive prompts for coherence across sections
 - Reranking and self-evaluation to reject weak translations
-- Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders) + **offline glossary/dictionary fallback**
+- Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders, **free Google Translate via googletrans**) + **offline glossary/dictionary fallback**
 - Modern web GUI (Gradio) with drag-and-drop and page-range selection
 - CLI parity for automation + document inspector for layout debugging
 - Secure API key handling with OS keychain (`keyring`)
@@ -78,7 +78,13 @@ python3 -m scitrans_lm set-key perplexity
 ```
 
 This uses your OS keychain via `keyring` so you won’t be prompted each run.
-For offline-only usage, skip this and choose the `dictionary` engine in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes.
+For offline-only usage, skip this and choose the `dictionary` engine (aliases: `offline`, `local`, `lexicon`) in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes. You can also pick `google-free` for a keyless (community) Google Translate backend powered by `googletrans`.
+
+### Free/offline usage cheat sheet
+
+- No keys? Pick `google-free` (keyless) or `dictionary`/`offline` (pure glossary + adaptive web dictionary for rare terms).
+- The offline dictionary merges the built-in glossary with your uploads and a cached MyMemory lookup so you still get reasonable translations without paid APIs.
+- If any engine errors mid-run, the block falls back to the offline dictionary so the translation completes instead of crashing.
 
 ### 5) Launch GUI (modern web UI)
 
@@ -116,8 +122,9 @@ python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 - **YOLO mandatory:** The pipeline requires a YOLO layout model at `data/layout/layout_model.pt`. First-run setup will create a placeholder if download/training is unavailable.
 - **Placeholder masking:** Mathematical expressions and tables are temporarily replaced with unique tokens before translation and restored after.
 - **Glossary:** A populated EN↔FR glossary (50+ core research terms) is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
-- **Engines:** `openai`, `deepl`, `google`, `deepseek`, `perplexity` (pluggable). If a services SDK isn’t installed, you’ll get a friendly message.
-- **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting.
+- **Engines:** `openai`, `deepl`, `google`, `google-free` (keyless), `deepseek`, `perplexity` (pluggable). If a services SDK isn’t installed, you’ll get a friendly message.
+- **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting. The keyless `google-free` backend offers a free option when paid APIs are unreachable.
+- **Progress visibility:** CLI logs each stage (layout parse, detection, per-block translation, rerank, overlay). The GUI mirrors these events below the status message so users know if reranking or retries are in progress.
 - **Translation memory & rerank:** Prompts include recent segments; reranking scores glossary hits and fluency before returning output.
 - **Inspection:** `inspect` reveals headings/captions vs paragraphs to validate layout parsing.
 - **No dummy/identity in GUI:** Test backends exist for developers but are **hidden** from end users in the GUI.

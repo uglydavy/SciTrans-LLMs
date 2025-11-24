@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .bootstrap import ensure_default_glossary, ensure_layout_model
 from .ingest.pdf import Block, extract_blocks
@@ -14,13 +14,16 @@ from .refine.postprocess import normalize
 from .refine.prompting import build_prompt, evaluate_translation, refine_prompt
 from .refine.rerank import rerank_candidates
 from .render.pdf import BlockOut, render_overlay
-from .translate.backends import get_translator
+from .translate.backends import DictionaryTranslator, get_translator
 from .translate.glossary import (
     enforce_post,
     merge_glossaries,
 )
 from .translate.memory import TranslationMemory
 from .utils import boxes_intersect, parse_page_range
+from rich import print as rprint
+
+ProgressFn = Optional[Callable[[str], None]]
 
 
 def translate_document(
@@ -32,9 +35,11 @@ def translate_document(
     preserve_figures: bool = True,
     quality_loops: int = 3,
     enable_rerank: bool = True,
+    progress: ProgressFn = None,
 ) -> str:
     import fitz
 
+    _notify(progress, "Preparing models and glossaries…")
     ensure_layout_model()
     ensure_default_glossary(refresh_remote=True)
 
@@ -44,10 +49,11 @@ def translate_document(
     s, e = parse_page_range(pages, total)
     page_indices = list(range(s, e + 1))
 
+    _notify(progress, f"Parsing layout from pages {s+1}-{e+1}…")
     blocks, _size = extract_blocks(input_pdf, page_indices)
 
     layout_detections = (
-        _collect_layout_detections(input_pdf, page_indices)
+        _collect_layout_detections(input_pdf, page_indices, progress)
         if preserve_figures
         else {}
     )
@@ -56,7 +62,11 @@ def translate_document(
     glossary = merge_glossaries()
     src, tgt = ("English", "French") if direction.lower() == "en-fr" else ("French", "English")
 
+    _notify(progress, f"Using engine: {engine or 'dictionary'}")
     translator = get_translator(engine, dictionary=glossary)
+    fallback_translator = (
+        translator if isinstance(translator, DictionaryTranslator) else DictionaryTranslator(glossary)
+    )
     memory = TranslationMemory(max_entries=64)
     base_prompt = build_prompt(src, tgt, glossary, memory=memory)
 
@@ -65,6 +75,7 @@ def translate_document(
     skip_overlay: set[int] = set()
 
     for idx, block in enumerate(blocks):
+        _notify(progress, f"Preparing block {idx+1}/{len(blocks)} (page {block.page_index+1})…")
         kind = (block.kind or "paragraph").lower()
         if preserve_figures and (
             kind in {"figure", "chart", "image", "formula", "equation", "table", "figure_caption", "table_caption"}
@@ -81,9 +92,12 @@ def translate_document(
         masked_payloads.append((idx, masked_text, placeholders))
 
     if masked_payloads:
-        for idx, masked_text, placeholders in masked_payloads:
+        total = len(masked_payloads)
+        for pos, (idx, masked_text, placeholders) in enumerate(masked_payloads, start=1):
+            _notify(progress, f"Translating block {pos}/{total}…")
             translated = _iterative_translate(
                 translator=translator,
+                fallback_translator=fallback_translator,
                 text=masked_text,
                 src=src,
                 tgt=tgt,
@@ -92,6 +106,7 @@ def translate_document(
                 memory=memory,
                 max_loops=quality_loops,
                 enable_rerank=enable_rerank,
+                progress=progress,
             )
             restored = unmask(normalize(enforce_post(translated, glossary)), placeholders)
             translated_texts[idx] = restored
@@ -109,11 +124,15 @@ def translate_document(
             BlockOut(page_index=block.page_index, bbox=block.bbox, text=text)
         )
 
+    _notify(progress, "Rendering translated overlay…")
     render_overlay(input_pdf, output_pdf, out_blocks, page_indices)
+    _notify(progress, f"Saved translated PDF to {output_pdf}")
     return output_pdf
 
 
-def _collect_layout_detections(pdf_path: str, page_indices: List[int]) -> Dict[int, List["Detection"]]:
+def _collect_layout_detections(
+    pdf_path: str, page_indices: List[int], progress: ProgressFn = None
+) -> Dict[int, List["Detection"]]:
     import os
     import tempfile
     import fitz
@@ -129,6 +148,7 @@ def _collect_layout_detections(pdf_path: str, page_indices: List[int]) -> Dict[i
     except Exception:
         return {}
 
+    _notify(progress, "Running figure/table detection (YOLO)…")
     doc = fitz.open(pdf_path)
     layout: Dict[int, List[Detection]] = {}
     for pi in page_indices:
@@ -161,6 +181,7 @@ def _collect_layout_detections(pdf_path: str, page_indices: List[int]) -> Dict[i
             )
         layout[pi] = adjusted
     doc.close()
+    _notify(progress, "Layout detection completed.")
     return layout
 
 
@@ -198,16 +219,39 @@ def _iterative_translate(
     memory: TranslationMemory,
     max_loops: int = 4,
     enable_rerank: bool = True,
+    progress: ProgressFn = None,
+    fallback_translator=None,
 ) -> str:
     prompt = base_prompt
     attempts: List[str] = []
     for i in range(max_loops):
-        attempt = translator.translate([text], src=src, tgt=tgt, prompt=prompt, glossary=glossary, context=memory)[0]
+        _notify(progress, f"Attempt {i+1}/{max_loops}: translating block…")
+        try:
+            attempt = translator.translate(
+                [text], src=src, tgt=tgt, prompt=prompt, glossary=glossary, context=memory
+            )[0]
+        except Exception as exc:
+            _notify(progress, f"Primary engine failed ({exc}); falling back to offline dictionary.")
+            if fallback_translator:
+                attempt = fallback_translator.translate(
+                    [text], src=src, tgt=tgt, prompt=prompt, glossary=glossary, context=memory
+                )[0]
+            else:
+                attempt = text
         evaluation = evaluate_translation(text, attempt)
         attempts.append(attempt)
         if evaluation.acceptable:
+            _notify(progress, "Accepted translation without further refinement.")
             break
         prompt = refine_prompt(base_prompt, evaluation, iteration=i)
     if enable_rerank:
+        _notify(progress, "Reranking candidates for fluency/glossary alignment…")
         return rerank_candidates(text, attempts, glossary).text
     return (attempts[-1] if attempts else text) or text
+
+
+def _notify(progress: ProgressFn, message: str) -> None:
+    if progress:
+        progress(message)
+    else:
+        rprint(f"[cyan]{message}[/cyan]")

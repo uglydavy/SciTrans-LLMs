@@ -217,6 +217,32 @@ class GoogleTranslator(BaseTranslator):
         return out
 
 
+class GoogleFreeTranslator(BaseTranslator):
+    """Free, keyless translator built on googletrans (community API)."""
+
+    def __init__(self):
+        try:
+            from googletrans import Translator
+
+            self._client = Translator()
+        except Exception as exc:
+            raise RuntimeError(
+                "googletrans not installed. Run: pip install googletrans==4.0.0-rc1"
+            ) from exc
+
+    def translate(self, texts, src, tgt, prompt: str = "", glossary=None, context: Optional[TranslationMemory] = None):
+        tgt_code = "fr" if tgt.lower().startswith("fr") else "en"
+        src_code = "en" if tgt_code == "fr" else "fr"
+        results = []
+        for text in texts:
+            try:
+                res = self._client.translate(text, src=src_code, dest=tgt_code)
+                results.append(res.text)
+            except Exception:
+                results.append(text)
+        return results
+
+
 class DeepSeekTranslator(_OpenAICompatTranslator):
     def __init__(self, model: str = "deepseek-chat"):
         super().__init__(
@@ -246,10 +272,14 @@ def get_translator(name: str, dictionary: Dict[str, str] | None = None) -> BaseT
             return DeepLTranslator()
         if name in ("google",):
             return GoogleTranslator()
+        if name in ("google-free", "googlefree", "googletrans", "free"):
+            return GoogleFreeTranslator()
         if name in ("deepseek",):
             return DeepSeekTranslator()
         if name in ("perplexity",):
             return PerplexityTranslator()
+        if name in ("dictionary", "offline", "local", "lexicon"):
+            return DictionaryTranslator(dictionary or {})
     except Exception as exc:
         warnings.warn(
             f"Falling back to offline dictionary translation because the requested backend failed to load: {exc}",

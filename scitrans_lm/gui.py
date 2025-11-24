@@ -47,12 +47,19 @@ def launch():
     ensure_layout_model()
     ensure_default_glossary()
 
+    progress = gr.Progress(track_tqdm=True)
+
     def do_translate(pdf_file, engine, direction, pages, preserve_figures, quality_loops, enable_rerank):
         if not pdf_file:
             return None, "Please upload a PDF.", None
         tmp = tempfile.NamedTemporaryFile(prefix="scitranslm_out_", suffix=".pdf", delete=False)
         out_path = tmp.name
         tmp.close()
+        events = []
+
+        def log(msg: str):
+            events.append(msg)
+            progress(0.02, desc=msg)
         try:
             translate_document(
                 pdf_file.name,
@@ -63,6 +70,7 @@ def launch():
                 preserve_figures=preserve_figures,
                 quality_loops=quality_loops,
                 enable_rerank=enable_rerank,
+                progress=log,
             )
             size_mb = os.path.getsize(out_path) / (1024 * 1024)
             note = " (compressed)" if size_mb > 0 else ""
@@ -71,7 +79,8 @@ def launch():
             else:
                 status = f"Done. File size: {size_mb:.1f} MB{note}."
             summary = "Quality pipeline: YOLO layout ➜ masking ➜ memory-aware prompting ➜ rerank." if enable_rerank else "Translated with direct prompting and glossary enforcement."
-            return out_path, status, summary
+            timeline = "\n".join(f"- {msg}" for msg in events)
+            return out_path, f"{status}\n{timeline}", summary
         except Exception as e:
             try:
                 os.unlink(out_path)
@@ -103,7 +112,7 @@ def launch():
             with gr.Column():
                 pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
                 engine = gr.Dropdown(
-                    choices=["openai", "deepl", "google", "deepseek", "perplexity", "dictionary"],
+                    choices=["openai", "deepl", "google", "google-free", "deepseek", "perplexity", "dictionary"],
                     value="dictionary",
                     label="Engine",
                     info="Online engines use secure keys; dictionary is offline with glossary + adaptive lookup.",
