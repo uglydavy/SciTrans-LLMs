@@ -1,3 +1,5 @@
+"""Small utility helpers used across CLI, GUI and pipeline."""
+
 from typing import Tuple
 
 

@@ -1,3 +1,5 @@
+"""Project-wide paths and lightweight directory helpers."""
+
 from pathlib import Path
 
 APP_NAME = "SciTrans-LM"

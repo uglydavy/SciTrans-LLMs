@@ -9,6 +9,7 @@ from rich import print as rprint
 from . import __version__
 from .bootstrap import ensure_default_glossary, ensure_layout_model, run_all
 from .ingest.analyzer import analyze_document
+from .keys import list_keys as stored_keys
 from .keys import set_key as store_key
 from .pipeline import translate_document
 from .utils import parse_page_range
@@ -61,7 +62,14 @@ def translate(
     preserve_figures: bool = typer.Option(True, "--preserve-figures", help="Preserve figures & formulas"),
     quality_loops: int = typer.Option(3, "--quality-loops", min=1, max=6, help="Number of refinement loops"),
     rerank: bool = typer.Option(True, "--rerank/--no-rerank", help="Enable glossary-aware reranking"),
+    preview: bool = typer.Option(False, "--preview/--no-preview", help="Print a short preview of the translated PDF"),
+    preview_chars: int = typer.Option(600, "--preview-chars", min=120, max=3200, help="Maximum characters to show when previewing"),
+    quiet: bool = typer.Option(False, "--quiet", help="Reduce console noise; still prints final status"),
 ):
+    def log(msg: str):
+        if not quiet:
+            rprint(f"[cyan]{msg}[/cyan]")
+
     outp = translate_document(
         str(i),
         str(o),
@@ -71,9 +79,16 @@ def translate(
         preserve_figures=preserve_figures,
         quality_loops=quality_loops,
         enable_rerank=rerank,
-        progress=lambda msg: rprint(f"[cyan]{msg}[/cyan]"),
+        progress=log,
     )
     rprint(f"[green]✔ Wrote {outp}[/green]")
+    if preview:
+        snippet = _preview_pdf_text(outp, max_chars=preview_chars)
+        if snippet:
+            rprint("[bold]Preview (first pages):[/bold]")
+            rprint(snippet)
+        else:
+            rprint("[yellow]Preview unavailable (no extractable text).[/yellow]")
 
 
 @app.command()
@@ -131,9 +146,61 @@ def evaluate(
     rprint(f"[bold]Average BLEU: {avg:.2f}[/bold]")
 
 
+@app.command("engines")
+def list_engines():
+    """List available translation engines and key requirements."""
+
+    engines = {
+        "dictionary": "Offline glossary/dictionary (no key)",
+        "google-free": "Keyless googletrans backend",
+        "openai": "Requires OPENAI_API_KEY or stored key",
+        "deepl": "Requires DEEPL_API_KEY or stored key",
+        "google": "Requires GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_API_KEY",
+        "deepseek": "Requires DEEPSEEK_API_KEY",
+        "perplexity": "Requires PERPLEXITY_API_KEY",
+    }
+    for name, desc in engines.items():
+        rprint(f"[bold]{name}[/bold]: {desc}")
+
+
+@app.command("keys")
+def show_keys():
+    """Show which API keys are already stored (values are not printed)."""
+
+    found = stored_keys()
+    if not found:
+        rprint("No keys found. Run 'python3 -m scitrans_lm set-key <service>' to store one.")
+        return
+    for svc in sorted(found):
+        state = "present" if found[svc] else "missing"
+        rprint(f"{svc}: {state}")
+
+
 @app.callback()
 def main():
     rprint(f"SciTrans-LM v{__version__}")
+
+
+def _preview_pdf_text(pdf_path: str, pages: int = 2, max_chars: int = 600) -> str:
+    """Extract a short preview from the translated PDF for quick inspection."""
+
+    try:
+        import fitz
+    except Exception:
+        return ""
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return ""
+    snippets = []
+    try:
+        for idx in range(min(pages, doc.page_count)):
+            page = doc.load_page(idx)
+            snippets.append(page.get_text("text"))
+    finally:
+        doc.close()
+    preview = "\n".join(snippets).strip()
+    return preview[:max_chars]
 
 
 if __name__ == "__main__":

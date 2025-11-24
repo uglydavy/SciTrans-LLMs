@@ -51,15 +51,21 @@ def launch():
 
     def do_translate(pdf_file, engine, direction, pages, preserve_figures, quality_loops, enable_rerank):
         if not pdf_file:
-            return None, "Please upload a PDF.", None
+            return None, "Please upload a PDF.", "", ""
         tmp = tempfile.NamedTemporaryFile(prefix="scitranslm_out_", suffix=".pdf", delete=False)
         out_path = tmp.name
         tmp.close()
-        events = []
+        events: list[str] = []
+        user_events: list[str] = []
 
         def log(msg: str):
             events.append(msg)
-            progress(0.02, desc=msg)
+            print(f"[SciTrans-LM] {msg}")
+            if any(key in msg for key in ("Parsing layout", "Translating block", "Rendering translated overlay", "Saved translated PDF")):
+                if not user_events or user_events[-1] != msg:
+                    user_events.append(msg)
+            progress(0, desc=msg)
+
         try:
             translate_document(
                 pdf_file.name,
@@ -74,19 +80,19 @@ def launch():
             )
             size_mb = os.path.getsize(out_path) / (1024 * 1024)
             note = " (compressed)" if size_mb > 0 else ""
-            if size_mb > 18:
-                status = f"Done. File size: {size_mb:.1f} MB{note}. Large files are compressed to stay downloadable."
-            else:
-                status = f"Done. File size: {size_mb:.1f} MB{note}."
+            status = f"Done. File size: {size_mb:.1f} MB{note}."
             summary = "Quality pipeline: YOLO layout ➜ masking ➜ memory-aware prompting ➜ rerank." if enable_rerank else "Translated with direct prompting and glossary enforcement."
-            timeline = "\n".join(f"- {msg}" for msg in events)
-            return out_path, f"{status}\n{timeline}", summary
+            status_lines = [status]
+            if user_events:
+                status_lines.append(" • ".join(user_events))
+            preview_text = _preview_pdf_text(out_path, max_chars=1400)
+            return out_path, "\n".join(status_lines), summary, preview_text
         except Exception as e:
             try:
                 os.unlink(out_path)
             except OSError:
                 pass
-            return None, f"Error: {e}", None
+            return None, f"Error: {e}", "", ""
 
     def upload_glossary(file_obj):
         if not file_obj:
@@ -95,42 +101,49 @@ def launch():
         shutil.copy(file_obj.name, dest)
         return f"Saved glossary as {dest.name}. It will be merged automatically on next translation."
 
-    with gr.Blocks(title="SciTrans-LM – EN↔FR PDF Translator") as demo:
+    css = """
+    #status-text {text-align:center;}
+    #summary-text {text-align:center; color:#1f2937;}
+    #preview-box textarea {min-height:220px;}
+    """
+
+    with gr.Blocks(title="SciTrans-LM – EN↔FR PDF Translator", css=css, theme=gr.themes.Soft()) as demo:
         gr.Markdown(
-            """
-            ## SciTrans-LM – English ↔ French PDF Translator
-            *Layout-preserving EN↔FR for research PDFs with glossary enforcement and iterative refinement.*
-
-            - YOLO layout detection keeps figures/formulas untouched.
-            - Masking + glossary enforcement + translation memory for consistent terminology.
-            - Offline dictionary + optional online engines (OpenAI, DeepSeek, Perplexity, DeepL, Google).
-            - Reranking and self-checking prompts to reduce hallucinations.
-            - Upload your own glossary to preserve lab- or domain-specific terms.
-            """
+            "<div style='text-align:center'><h2>SciTrans-LM – English ↔ French PDF Translator</h2>"
+            "<p>Layout-preserving translation with glossary enforcement, refinement, and offline fallbacks.</p></div>"
         )
-        with gr.Row():
-            with gr.Column():
+        with gr.Row(equal_height=True):
+            with gr.Column(scale=6):
                 pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
-                engine = gr.Dropdown(
-                    choices=["openai", "deepl", "google", "google-free", "deepseek", "perplexity", "dictionary"],
-                    value="dictionary",
-                    label="Engine",
-                    info="Online engines use secure keys; dictionary is offline with glossary + adaptive lookup.",
-                )
-                direction = gr.Radio(["en-fr", "fr-en"], value="en-fr", label="Direction (EN↔FR)")
-                pages = gr.Textbox(value="all", label="Pages (e.g., all or 1-5)")
-                preserve = gr.Checkbox(value=True, label="Preserve figures & formulas (recommended)")
-                quality_loops = gr.Slider(1, 5, value=3, step=1, label="Refinement loops (re-prompt if weak)")
-                enable_rerank = gr.Checkbox(value=True, label="Enable reranking with glossary/fluency scoring")
+                with gr.Row():
+                    engine = gr.Dropdown(
+                        choices=["dictionary", "google-free", "openai", "deepl", "google", "deepseek", "perplexity"],
+                        value="dictionary",
+                        label="Engine",
+                        info="Pick a backend. Dictionary and Google-free do not require API keys.",
+                    )
+                    direction = gr.Radio(["en-fr", "fr-en"], value="en-fr", label="Direction")
+                with gr.Row():
+                    pages = gr.Textbox(value="all", label="Pages", placeholder="all or 1-5")
+                    preserve = gr.Checkbox(value=True, label="Preserve figures/formulas")
+                with gr.Row():
+                    quality_loops = gr.Slider(1, 5, value=3, step=1, label="Refinement loops")
+                    enable_rerank = gr.Checkbox(value=True, label="Rerank candidates")
                 go = gr.Button("Translate", variant="primary")
-                status = gr.Markdown("Ready.")
-                summary = gr.Markdown(visible=True)
-            with gr.Column():
-                out_pdf = gr.File(label="Translated PDF", interactive=False)
-                glossary_upload = gr.File(label="Upload custom glossary (.csv)")
-                glossary_status = gr.Markdown("Glossary: built-in 50+ terms. Upload to extend.")
+                status = gr.Markdown("<div id='status-text'><strong>Ready.</strong></div>")
+                summary = gr.Markdown("", elem_id="summary-text")
+            with gr.Column(scale=5):
+                preview = gr.Textbox(label="Preview (first pages)", lines=10, interactive=False, elem_id="preview-box")
+                out_pdf = gr.File(label="Download translated PDF", interactive=False)
+                with gr.Accordion("Glossary options", open=False):
+                    glossary_upload = gr.File(label="Upload custom glossary (.csv)")
+                    glossary_status = gr.Markdown("Glossary: built-in 50+ terms. Upload to extend.")
 
-        go.click(do_translate, inputs=[pdf, engine, direction, pages, preserve, quality_loops, enable_rerank], outputs=[out_pdf, status, summary])
+        go.click(
+            do_translate,
+            inputs=[pdf, engine, direction, pages, preserve, quality_loops, enable_rerank],
+            outputs=[out_pdf, status, summary, preview],
+        )
         glossary_upload.change(upload_glossary, inputs=[glossary_upload], outputs=[glossary_status])
 
     try:
@@ -140,6 +153,28 @@ def launch():
             demo.launch(share=True, show_api=False)
         else:
             raise
+
+
+def _preview_pdf_text(pdf_path: str, pages: int = 2, max_chars: int = 1400) -> str:
+    """Extract a short preview from the translated PDF without downloading."""
+
+    try:
+        import fitz
+    except Exception:
+        return ""
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return ""
+    snippets = []
+    try:
+        for idx in range(min(pages, doc.page_count)):
+            page = doc.load_page(idx)
+            snippets.append(page.get_text("text"))
+    finally:
+        doc.close()
+    preview = "\n".join(snippets).strip()
+    return preview[:max_chars]
 
 
 if __name__ == "__main__":
