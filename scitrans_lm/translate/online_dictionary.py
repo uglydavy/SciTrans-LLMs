@@ -6,7 +6,10 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-import requests
+try:
+    import requests
+except Exception:  # pragma: no cover - optional dependency
+    requests = None
 
 from ..config import CACHE_DIR
 
@@ -54,6 +57,8 @@ class AdaptiveDictionary:
     def _fetch_online(self, term: str, src: str, tgt: str) -> Optional[str]:
         """Use a free endpoint (MyMemory) with graceful degradation."""
 
+        if requests is None:
+            return None
         params = {"q": term, "langpair": f"{src[:2]}|{tgt[:2]}", "de": "noreply@example.com"}
         try:
             resp = requests.get("https://api.mymemory.translated.net/get", params=params, timeout=5)

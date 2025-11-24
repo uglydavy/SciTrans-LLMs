@@ -55,7 +55,7 @@ def set_key(
 def translate(
     i: Path = typer.Option(..., "--input", "-i", exists=True, file_okay=True, dir_okay=False, readable=True, help="Input PDF"),
     o: Path = typer.Option(..., "--output", "-o", help="Output PDF path"),
-    engine: str = typer.Option("dictionary", "--engine", help="Backend engine (openai|deepl|google|deepseek|perplexity|dictionary)"),
+    engine: str = typer.Option("dictionary", "--engine", help="Backend engine (openai|deepl|google|google-free|deepseek|perplexity|dictionary)"),
     direction: str = typer.Option("en-fr", "--direction", help="en-fr or fr-en"),
     pages: str = typer.Option("all", "--pages", help="Page range, e.g., all or 1-5"),
     preserve_figures: bool = typer.Option(True, "--preserve-figures", help="Preserve figures & formulas"),
@@ -71,6 +71,7 @@ def translate(
         preserve_figures=preserve_figures,
         quality_loops=quality_loops,
         enable_rerank=rerank,
+        progress=lambda msg: rprint(f"[cyan]{msg}[/cyan]"),
     )
     rprint(f"[green]✔ Wrote {outp}[/green]")
 
