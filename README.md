@@ -92,15 +92,21 @@ For offline-only usage, skip this and choose the `dictionary` engine (aliases: `
 python3 -m scitrans_lm gui
 ```
 
-- **Left:** Upload (drag & drop) the source PDF and preview
+- **Left:** Upload (drag & drop) the source PDF with centered controls
 - **Top bar:** Engine selection, EN↔FR direction, page range (auto-filled), preserve figures/formulas toggle
 - **Quality controls:** refinement loop slider + reranking toggle
-- **Right:** Live preview of translated result (sample pages), glossary upload and status
+- **Right:** Live preview of translated text before download + glossary upload/status panel
 
 ### 6) CLI usage
 
 ```bash
 python3 -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures --quality-loops 4
+# Quick preview without opening the PDF
+python3 -m scitrans_lm translate -i input.pdf -o output.pdf --engine google-free --preview
+# List engines + key requirements
+python3 -m scitrans_lm engines
+# Check which keys are already stored (masked)
+python3 -m scitrans_lm keys
 ```
 
 ### 7) Inspect layout extraction
@@ -124,7 +130,7 @@ python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 - **Glossary:** A populated EN↔FR glossary (50+ core research terms) is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
 - **Engines:** `openai`, `deepl`, `google`, `google-free` (keyless), `deepseek`, `perplexity` (pluggable). If a services SDK isn’t installed, you’ll get a friendly message.
 - **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting. The keyless `google-free` backend offers a free option when paid APIs are unreachable.
-- **Progress visibility:** CLI logs each stage (layout parse, detection, per-block translation, rerank, overlay). The GUI mirrors these events below the status message so users know if reranking or retries are in progress.
+- **Progress visibility:** CLI logs each stage (layout parse, detection, per-block translation, rerank, overlay). The GUI now shows a concise status while keeping detailed rerank logs in the terminal.
 - **Translation memory & rerank:** Prompts include recent segments; reranking scores glossary hits and fluency before returning output.
 - **Inspection:** `inspect` reveals headings/captions vs paragraphs to validate layout parsing.
 - **No dummy/identity in GUI:** Test backends exist for developers but are **hidden** from end users in the GUI.

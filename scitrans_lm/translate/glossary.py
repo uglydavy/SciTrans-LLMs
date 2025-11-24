@@ -4,6 +4,13 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+"""Glossary loading and enforcement helpers."""
+
+import csv
+import re
+from pathlib import Path
+from typing import Dict
+
 from ..config import DEFAULT_GLOSSARY, GLOSSARY_DIR
 
 

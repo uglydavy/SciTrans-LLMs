@@ -1,4 +1,4 @@
-"""Utility functions for storing and retrieving API keys for translation backends.
+"""API key storage and retrieval helpers.
 
 Keys are stored under ``~/.config/scitrans_llm/keys.json``. Environment
 variables such as ``OPENAI_API_KEY`` are also honored. This module avoids
@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 CONFIG_DIR = Path(os.path.expanduser("~/.config/scitrans_llm"))
 CONFIG_FILE = CONFIG_DIR / "keys.json"
@@ -67,3 +67,27 @@ def set_key(service: str, key: str) -> None:
     data[service] = key
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def list_keys() -> Dict[str, bool]:
+    """Return a mapping of stored services -> presence (masked, not values)."""
+
+    discovered: Dict[str, bool] = {}
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            for name, value in data.items():
+                discovered[name] = bool(value)
+        except Exception:
+            pass
+    for svc, env_var in {
+        "openai": "OPENAI_API_KEY",
+        "deepl": "DEEPL_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "perplexity": "PERPLEXITY_API_KEY",
+    }.items():
+        if env_var in os.environ:
+            discovered[svc] = True
+    return discovered
