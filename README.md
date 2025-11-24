@@ -1,18 +1,35 @@
-
 # SciTrans-LM (EN↔FR) – Modern GUI + CLI
 
 A layout-preserving scientific PDF translator for **English ↔ French** with:
 - Mandatory YOLO layout analysis (DocLayout-style) for figures/tables/formulas
 - Placeholder masking (math/tables) and glossary enforcement
+- Translation memory + adaptive prompts for coherence across sections
+- Reranking and self-evaluation to reject weak translations
 - Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders) + **offline glossary/dictionary fallback**
 - Modern web GUI (Gradio) with drag-and-drop and page-range selection
-- CLI parity for automation
+- CLI parity for automation + document inspector for layout debugging
 - Secure API key handling with OS keychain (`keyring`)
 - Evaluation (SacreBLEU) + refine (spacing fixes, glossary post-processing)
 - Iterative prompt-guided refinement (up to 4 passes) for more reliable offline/online translations
 - Cross-platform: macOS, Linux, Windows
 
-> **Note:** Model files (YOLO weights) and large bilingual corpora are not bundled in this ZIP to keep it light. The first-run **setup** will download/train as needed and create default glossaries.
+> **Note:** Model files (YOLO weights) and large bilingual corpora are not bundled in this ZIP to keep it light. The first-run
+> *setup** will download/train as needed and create default glossaries.
+
+---
+
+## What’s new vs. PDFMathTranslate?
+
+SciTrans-LM started as a learning project inspired by PDFMathTranslate, but it now adds research-oriented capabilities:
+
+- **Adaptive glossary enforcement**: built-in + user-uploaded glossaries are merged, post-enforced, and shared with online/offline engines.
+- **Translation memory prompts**: recent segments are summarized in the prompt so layout blocks stay terminologically coherent.
+- **Hybrid dictionary**: offline lexicon backed by an on-demand online lookup cache for rare terms; case-aware replacements avoid blank outputs.
+- **Quality control loop**: iterative prompting with reranking that scores glossary hits, fluency signals, and change-ratios.
+- **Content inspector**: `python -m scitrans_lm inspect` surfaces block/heading/caption detection to verify layout extraction.
+- **Model-specific prompting**: OpenAI, DeepSeek, Perplexity, DeepL, and Google get tailored system prompts while sharing the same guardrails (masking + placeholder preservation).
+- **GUI ergonomics**: sliders for refinement depth, rerank toggle, and glossary upload panel clearly signal what each feature does.
+- **Licensing clarity**: the entire codebase is MIT-licensed; external dictionaries remain optional downloads.
 
 ---
 
@@ -71,15 +88,22 @@ python3 -m scitrans_lm gui
 
 - **Left:** Upload (drag & drop) the source PDF and preview
 - **Top bar:** Engine selection, EN↔FR direction, page range (auto-filled), preserve figures/formulas toggle
-- **Right:** Live preview of translated result (sample pages), Download button for full PDF
+- **Quality controls:** refinement loop slider + reranking toggle
+- **Right:** Live preview of translated result (sample pages), glossary upload and status
 
 ### 6) CLI usage
 
 ```bash
-python3 -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures
+python3 -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures --quality-loops 4
 ```
 
-### 7) Evaluate translations (BLEU)
+### 7) Inspect layout extraction
+
+```bash
+python3 -m scitrans_lm inspect -i input.pdf --pages 1-3 --json report.json
+```
+
+### 8) Evaluate translations (BLEU)
 
 ```bash
 python3 -m scitrans_lm evaluate --ref data/refs.txt --hyp outputs/my_run.txt
@@ -92,9 +116,10 @@ python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 - **YOLO mandatory:** The pipeline requires a YOLO layout model at `data/layout/layout_model.pt`. First-run setup will create a placeholder if download/training is unavailable.
 - **Placeholder masking:** Mathematical expressions and tables are temporarily replaced with unique tokens before translation and restored after.
 - **Glossary:** A populated EN↔FR glossary (50+ core research terms) is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
-- **Engines:** `openai`, `deepl`, `google`, `deepseek`, `perplexity` (pluggable). If a service’s SDK isn’t installed, you’ll get a friendly message.
+- **Engines:** `openai`, `deepl`, `google`, `deepseek`, `perplexity` (pluggable). If a services SDK isn’t installed, you’ll get a friendly message.
 - **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting.
-- **Evaluation:** Use `python3 -m scitrans_lm evaluate --ref ref.txt --hyp hyp.txt` for BLEU (SacreBLEU). For document sets, point to folders.
+- **Translation memory & rerank:** Prompts include recent segments; reranking scores glossary hits and fluency before returning output.
+- **Inspection:** `inspect` reveals headings/captions vs paragraphs to validate layout parsing.
 - **No dummy/identity in GUI:** Test backends exist for developers but are **hidden** from end users in the GUI.
 
 ## Requirements
@@ -103,6 +128,7 @@ See `requirements.txt`. Key items:
 - Python 3.10–3.12
 - PyMuPDF (fitz), ultralytics (YOLOv8), gradio (GUI)
 - keyring (secure key storage), sacrebleu (evaluation)
+- requests (adaptive dictionary fetch)
 
 Optional:
 - pytesseract for OCR of images inside figures (if you choose to translate figure text)
@@ -115,7 +141,7 @@ Optional:
 
 ## License
 
-The code is under the **MIT License** (see `LICENSE`). Default dictionary/glossary downloads use open datasets (e.g., FreeDict). Check their licenses before redistribution.
+The code is under the **MIT License** (see `LICENSE`). External dictionaries/glossaries downloaded at runtime may carry their own terms; verify before redistribution.
 
 ---
 
