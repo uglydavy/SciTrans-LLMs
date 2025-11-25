@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 import typer
 from rich import print as rprint
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from . import __version__
 from .bootstrap import ensure_default_glossary, ensure_layout_model, run_all
@@ -66,21 +67,38 @@ def translate(
     preview_chars: int = typer.Option(600, "--preview-chars", min=120, max=3200, help="Maximum characters to show when previewing"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console noise; still prints final status"),
 ):
-    def log(msg: str):
-        if not quiet:
-            rprint(f"[cyan]{msg}[/cyan]")
-
-    outp = translate_document(
-        str(i),
-        str(o),
-        engine=engine,
-        direction=direction,
-        pages=pages,
-        preserve_figures=preserve_figures,
-        quality_loops=quality_loops,
-        enable_rerank=rerank,
-        progress=log,
+    events: list[str] = []
+    progress_bar = Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("{task.description}"),
+        BarColumn(bar_width=None),
+        TimeElapsedColumn(),
+        expand=True,
+        transient=quiet,
     )
+
+    with progress_bar:
+        task = progress_bar.add_task("Preparing…", total=None)
+
+        def log(msg: str):
+            events.append(msg)
+            progress_bar.update(task, description=msg)
+            if not quiet:
+                progress_bar.log(f"[cyan]{msg}[/cyan]")
+
+        outp = translate_document(
+            str(i),
+            str(o),
+            engine=engine,
+            direction=direction,
+            pages=pages,
+            preserve_figures=preserve_figures,
+            quality_loops=quality_loops,
+            enable_rerank=rerank,
+            progress=log,
+        )
+        progress_bar.update(task, description="Translation complete")
+
     rprint(f"[green]✔ Wrote {outp}[/green]")
     if preview:
         snippet = _preview_pdf_text(outp, max_chars=preview_chars)
