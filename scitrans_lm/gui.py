@@ -47,6 +47,10 @@ from .ingest.analyzer import analyze_document
 from .pipeline import translate_document, _collect_layout_detections
 from .bootstrap import ensure_layout_model, ensure_default_glossary
 from .config import GLOSSARY_DIR
+from .mask import mask_protected_segments, unmask
+from .refine.rerank import rerank_candidates
+from .refine.scoring import bleu
+from .translate.glossary import merge_glossaries
 from .utils import parse_page_range
 
 
@@ -187,6 +191,35 @@ def launch():
             lines.append(" • No text blocks detected.")
         return "\n".join(lines)
 
+    def mask_and_restore(sample_text: str):
+        if not sample_text:
+            return "", "No text provided.", ""
+        masked, placeholders = mask_protected_segments(sample_text)
+        restored = unmask(masked, placeholders)
+        placeholder_list = ", ".join(t for _, t in placeholders) or "(none)"
+        return masked, f"Placeholders: {placeholder_list}", restored
+
+    def rerank_sandbox(source_text: str, candidates_text: str):
+        glossary = merge_glossaries()
+        source_text = source_text or ""
+        candidates = [c.strip() for c in (candidates_text or "").split("\n") if c.strip()]
+        if not candidates:
+            return "", "Provide at least one candidate translation (one per line)."
+        best = rerank_candidates(source_text, candidates, glossary)
+        detail = ", ".join(f"{k}={v:.3f}" for k, v in best.detail.items())
+        return best.text, f"Best score: {best.score:.3f} ({detail})"
+
+    def quick_bleu(reference: str, hypothesis: str):
+        reference = (reference or "").strip()
+        hypothesis = (hypothesis or "").strip()
+        if not reference or not hypothesis:
+            return "Enter reference and hypothesis text to score."
+        try:
+            score = bleu(hypothesis, reference)
+            return f"BLEU: {score:.2f}"
+        except Exception as exc:  # noqa: BLE001
+            return f"Scoring failed: {exc}"
+
     def upload_glossary(file_obj):
         if not file_obj:
             return "Upload a CSV with 'source,target' columns to enforce terminology."
@@ -198,6 +231,7 @@ def launch():
     #status-text {text-align:center;}
     #summary-text {text-align:center; color:#1f2937;}
     #preview-box textarea {min-height:220px;}
+    .compact-row {gap: 0.6rem;}
     """
 
     with gr.Blocks(title="SciTrans-LM – EN↔FR PDF Translator", css=css, theme=gr.themes.Soft()) as demo:
@@ -208,8 +242,8 @@ def launch():
 
         with gr.Tabs():
             with gr.Tab("Translate"):
-                with gr.Row(equal_height=True):
-                    with gr.Column(scale=6):
+                with gr.Row(equal_height=True, elem_classes="compact-row"):
+                    with gr.Column(scale=6, variant="panel"):
                         pdf = gr.File(label="Upload PDF", file_types=[".pdf"], type="filepath")
                         with gr.Row():
                             url_box = gr.Textbox(label="Or fetch via URL", placeholder="https://example.com/paper.pdf")
@@ -238,7 +272,7 @@ def launch():
                             interactive=False,
                             placeholder="Progress, OCR fallbacks, and rerank steps will appear here after translation.",
                         )
-                    with gr.Column(scale=5):
+                    with gr.Column(scale=5, variant="panel"):
                         preview = gr.Textbox(label="Preview (first pages)", lines=10, interactive=False, elem_id="preview-box")
                         out_pdf = gr.File(label="Download translated PDF", interactive=False)
                         with gr.Accordion("Glossary options", open=False):
@@ -261,6 +295,65 @@ def launch():
                 layout_summary = gr.Textbox(label="Layout summary", lines=14, interactive=False)
 
                 inspect_btn.click(inspect_layout, inputs=[pdf, pages, preserve], outputs=[layout_summary])
+
+            with gr.Tab("Pipeline Lab"):
+                gr.Markdown(
+                    "Experiment with individual modules (masking, reranking, BLEU scoring) without running a full translation."
+                )
+                with gr.Row(equal_height=True, elem_classes="compact-row"):
+                    with gr.Column(scale=5, variant="panel"):
+                        gr.Markdown("**Masking sandbox** – see how protected segments are tokenized and restored.")
+                        sample_text = gr.Textbox(label="Sample source text", lines=5)
+                        mask_btn = gr.Button("Mask & restore", variant="secondary")
+                        masked = gr.Textbox(label="Masked text", lines=4, interactive=False)
+                        placeholder_status = gr.Markdown()
+                        restored = gr.Textbox(label="Restored text", lines=4, interactive=False)
+                        mask_btn.click(mask_and_restore, inputs=[sample_text], outputs=[masked, placeholder_status, restored])
+
+                    with gr.Column(scale=5, variant="panel"):
+                        gr.Markdown("**Rerank sandbox** – provide candidates to see glossary-aware reranking.")
+                        rerank_source = gr.Textbox(label="Source", lines=4)
+                        rerank_candidates_box = gr.Textbox(
+                            label="Candidate translations (one per line)", lines=6, placeholder="Cand 1\nCand 2"
+                        )
+                        rerank_btn = gr.Button("Rerank", variant="secondary")
+                        rerank_choice = gr.Textbox(label="Selected translation", lines=3, interactive=False)
+                        rerank_detail = gr.Markdown()
+                        rerank_btn.click(
+                            rerank_sandbox,
+                            inputs=[rerank_source, rerank_candidates_box],
+                            outputs=[rerank_choice, rerank_detail],
+                        )
+
+                with gr.Row(equal_height=True, elem_classes="compact-row"):
+                    with gr.Column(scale=5, variant="panel"):
+                        gr.Markdown("**BLEU quick check** – compare a hypothesis against a reference.")
+                        ref_text = gr.Textbox(label="Reference", lines=4)
+                        hyp_text = gr.Textbox(label="Hypothesis", lines=4)
+                        bleu_btn = gr.Button("Compute BLEU", variant="secondary")
+                        bleu_score = gr.Markdown()
+                        bleu_btn.click(quick_bleu, inputs=[ref_text, hyp_text], outputs=[bleu_score])
+
+                    with gr.Column(scale=5, variant="panel"):
+                        gr.Markdown("**Layout snapshot** – reuse the analyzer to spot headings/tables quickly.")
+                        quick_layout_btn = gr.Button("Analyze first page", variant="secondary")
+                        quick_layout_out = gr.Textbox(label="Snapshot", lines=8, interactive=False)
+
+                        def _quick_layout(pdf_file):
+                            if not pdf_file:
+                                return "Upload a PDF first."
+                            notes: list[str] = []
+                            summaries = analyze_document(pdf_file.name, [0], notes=notes)
+                            if not summaries:
+                                return "No blocks detected on first page."
+                            top = summaries[:6]
+                            lines = [f"p{b.page_index+1} [{b.kind}] {shorten(b.text_preview, width=100)}" for b in top]
+                            if notes:
+                                lines.append("Notes:")
+                                lines.extend(["- " + n for n in notes])
+                            return "\n".join(lines)
+
+                        quick_layout_btn.click(_quick_layout, inputs=[pdf], outputs=[quick_layout_out])
 
     try:
         demo.launch()

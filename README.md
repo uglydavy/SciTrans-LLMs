@@ -6,8 +6,8 @@ A layout-preserving scientific PDF translator for **English ↔ French** with:
 - Translation memory + adaptive prompts for coherence across sections
 - Reranking and self-evaluation to reject weak translations
 - Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders, **free Google Translate via googletrans**) + **offline glossary/dictionary fallback**
-- Modern web GUI (Gradio) with drag-and-drop and page-range selection
-- CLI parity for automation + document inspector for layout debugging
+- Modern web GUI (Gradio) with drag-and-drop, **Pipeline Lab** for testing masking/rerank/BLEU, and page-range selection
+- CLI parity for automation + document inspector for layout debugging, now with a visible progress bar
 - Secure API key handling with OS keychain (`keyring`)
 - Evaluation (SacreBLEU) + refine (spacing fixes, glossary post-processing)
 - Iterative prompt-guided refinement (up to 4 passes) for more reliable offline/online translations
@@ -96,11 +96,12 @@ python3 -m scitrans_lm gui
 - **Top bar:** Engine selection, EN↔FR direction, page range (auto-filled), preserve figures/formulas toggle
 - **Quality controls:** refinement loop slider + reranking toggle
 - **Right:** Live preview of translated text before download + glossary upload/status panel
+- **Pipeline Lab tab:** sandbox for masking/unmasking, glossary-aware reranking, BLEU checks, and a quick layout snapshot without running a full translation
 
 ### 6) CLI usage
 
 ```bash
-python3 -m scitrans_lm translate   -i path/to/input.pdf   -o path/to/output.pdf   --engine openai   --direction en-fr   --pages 1-5   --preserve-figures --quality-loops 4
+python3 -m scitrans_lm translate --input path/to/input.pdf --output path/to/output.pdf --engine openai --direction en-fr --pages 1-5 --preserve-figures --quality-loops 4
 # Quick preview without opening the PDF
 python3 -m scitrans_lm translate -i input.pdf -o output.pdf --engine google-free --preview
 # List engines + key requirements
@@ -130,7 +131,7 @@ python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 - **Glossary:** A populated EN↔FR glossary (50+ core research terms) is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
 - **Engines:** `openai`, `deepl`, `google`, `google-free` (keyless), `deepseek`, `perplexity` (pluggable). If a services SDK isn’t installed, you’ll get a friendly message.
 - **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting. The keyless `google-free` backend offers a free option when paid APIs are unreachable.
-- **Progress visibility:** CLI logs each stage (layout parse, detection, per-block translation, rerank, overlay). The GUI now shows a concise status while keeping detailed rerank logs in the terminal.
+- **Progress visibility:** CLI logs each stage (layout parse, detection, per-block translation, rerank, overlay) with a Rich spinner/bar. The GUI shows concise status while Pipeline Lab and rerank logs keep details handy without scrolling.
 - **Translation memory & rerank:** Prompts include recent segments; reranking scores glossary hits and fluency before returning output.
 - **Inspection:** `inspect` reveals headings/captions vs paragraphs to validate layout parsing.
 - **No dummy/identity in GUI:** Test backends exist for developers but are **hidden** from end users in the GUI.
