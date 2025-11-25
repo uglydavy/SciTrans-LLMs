@@ -47,6 +47,8 @@ python -m pip install -r requirements.txt
 
 If you see a `No such file or directory` error, delete any partially created `.venv` folder first (`rm -rf .venv`) and rerun the commands above.
 
+> **NumPy note:** Some dependencies (pandas/matplotlib/bottleneck) still ship wheels built against NumPy 1.x. The pinned `numpy<2` in `requirements.txt` avoids `_ARRAY_API` crashes; if your existing environment forces NumPy 2.x, reinstall with `python -m pip install "numpy<2"` before launching the GUI/CLI.
+
 > **Torch & YOLO:** If PyTorch isn't auto-installed by `ultralytics`, install a wheel appropriate for your system:
 > https://pytorch.org/get-started/locally/
 
