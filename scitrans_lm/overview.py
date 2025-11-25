@@ -1,8 +1,7 @@
 """Lightweight component map for SciTrans-LM.
 
-This module centralises a human-readable overview of the codebase so both
-CLI and GUI users can discover where to extend or debug specific stages of
-the pipeline without hunting through folders.
+CLI and GUI users can surface this summary to quickly locate modules without
+hunting through folders.
 """
 
 from __future__ import annotations

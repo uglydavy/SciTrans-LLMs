@@ -1,7 +1,12 @@
+"""Thin wrapper around ultralytics YOLO for layout detection."""
+
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List
 from pathlib import Path
+from typing import List
+import warnings
+
 from ..config import LAYOUT_MODEL
 from ..utils import detect_device
 
@@ -25,12 +30,25 @@ class LayoutPredictor:
             raise FileNotFoundError(
                 f"Layout model not found at {self.model_path}. Run 'python3 -m scitrans_lm setup --yolo'."
             )
-        # Attempt to load with ultralytics; if placeholder, this will likely fail at inference, which is fine until setup completes.
+        try:
+            if self.model_path.stat().st_size <= 1024:
+                raise FileNotFoundError(
+                    f"Placeholder layout weights detected at {self.model_path}. Replace with DocLayout-YOLO weights."
+                )
+        except OSError as exc:
+            raise FileNotFoundError(
+                f"Unable to read layout model at {self.model_path}: {exc}. Re-run setup --yolo or provide a valid file."
+            )
+
         try:
             from ultralytics import YOLO
+
             self._model = YOLO(str(self.model_path))
         except Exception:
-            # Defer heavy errors to runtime; allow pipeline to continue if user wants to translate without detection.
+            warnings.warn(
+                "Failed to load YOLO weights; continuing without layout detection. Re-run setup --yolo for better results.",
+                RuntimeWarning,
+            )
             self._model = None
 
     def detect(self, image_path: str, conf: float = 0.25) -> List[Detection]:
@@ -51,3 +69,6 @@ class LayoutPredictor:
             return dets
         except Exception:
             return []
+
+
+__all__ = ["Detection", "LayoutPredictor"]
