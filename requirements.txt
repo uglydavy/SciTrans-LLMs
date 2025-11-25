@@ -2,7 +2,10 @@
 PyMuPDF>=1.23.9
 ultralytics>=8.1.0
 pillow>=10.0.0
-numpy>=1.25.0
+# Many upstream wheels (pandas, matplotlib, bottleneck, numexpr) are still built
+# against NumPy 1.x. Pin below 2.0 to avoid `_ARRAY_API` import errors when
+# users launch the GUI or CLI with those compiled extensions.
+numpy>=1.25.0,<2.0.0
 pandas>=2.1.0
 typer>=0.9.0
 rich>=13.6.0
