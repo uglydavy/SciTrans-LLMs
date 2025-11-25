@@ -5,7 +5,9 @@ from typing import Dict, Optional
 
 import typer
 from rich import print as rprint
+from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
 
 from . import __version__
 from .bootstrap import ensure_default_glossary, ensure_layout_model, run_all
@@ -13,6 +15,7 @@ from .ingest.analyzer import analyze_document
 from .keys import list_keys as stored_keys
 from .keys import set_key as store_key
 from .pipeline import translate_document
+from .diagnostics import collect_diagnostics, summarize_checks
 from .utils import parse_page_range
 
 app = typer.Typer(add_completion=False, help="SciTrans-LM – EN↔FR scientific PDF translator (GUI + CLI)")
@@ -40,6 +43,34 @@ def setup(
         rprint("[green]✔ Default glossary created (data/glossary/default_en_fr.csv).[/green]")
     if not (all or yolo or glossary):
         run_all()
+
+
+@app.command()
+def doctor(json_output: bool = typer.Option(False, "--json", help="Emit diagnostics as JSON instead of a table")):
+    """Inspect dependencies, models, and keys to catch issues early."""
+
+    checks = collect_diagnostics()
+    if json_output:
+        print(json.dumps([c.__dict__ for c in checks], indent=2))
+        return
+
+    table = Table(title="SciTrans-LM environment health", show_lines=True)
+    table.add_column("Status", justify="center")
+    table.add_column("Item")
+    table.add_column("Detail")
+
+    icons = {"ok": "✅", "warn": "⚠️", "error": "❌"}
+    for c in checks:
+        table.add_row(icons.get(c.status, "•"), c.name, c.detail)
+
+    console = Console()
+    console.print(table)
+    summary = summarize_checks(checks)
+    rprint(
+        f"[bold]{summary['ok']} OK[/bold], "
+        f"[yellow]{summary['warn']} warning(s)[/yellow], "
+        f"[red]{summary['error']} error(s)[/red]."
+    )
 
 
 @app.command()

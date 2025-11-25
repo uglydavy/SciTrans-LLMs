@@ -80,13 +80,23 @@ python3 -m scitrans_lm set-key perplexity
 This uses your OS keychain via `keyring` so you won’t be prompted each run.
 For offline-only usage, skip this and choose the `dictionary` engine (aliases: `offline`, `local`, `lexicon`) in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes. You can also pick `google-free` for a keyless (community) Google Translate backend powered by `googletrans`.
 
+### 5) Run a quick health check (deps/models/keys)
+
+```bash
+python3 -m scitrans_lm doctor
+# or JSON output for CI/logs
+python3 -m scitrans_lm doctor --json
+```
+
+Use the **System Check** tab in the GUI to run the same diagnostics without leaving the browser.
+
 ### Free/offline usage cheat sheet
 
 - No keys? Pick `google-free` (keyless) or `dictionary`/`offline` (pure glossary + adaptive web dictionary for rare terms).
 - The offline dictionary merges the built-in glossary with your uploads and a cached MyMemory lookup so you still get reasonable translations without paid APIs.
 - If any engine errors mid-run, the block falls back to the offline dictionary so the translation completes instead of crashing.
 
-### 5) Launch GUI (modern web UI)
+### 6) Launch GUI (modern web UI)
 
 ```bash
 python3 -m scitrans_lm gui
@@ -96,9 +106,13 @@ python3 -m scitrans_lm gui
 - **Top bar:** Engine selection, EN↔FR direction, page range (auto-filled), preserve figures/formulas toggle
 - **Quality controls:** refinement loop slider + reranking toggle
 - **Right:** Live preview of translated text before download + glossary upload/status panel
-- **Pipeline Lab tab:** sandbox for masking/unmasking, glossary-aware reranking, BLEU checks, and a quick layout snapshot without running a full translation
+- **Pipeline timeline:** a single log shows the major steps (layout → translation → rerank → rendering) instead of scattered progress snippets
+- **Tabs:**
+  - **Translate:** main workflow with upload/URL fetch and the pipeline timeline
+  - **Debug / QA:** run the analyzer only to check segmentation before translating
+  - **Pipeline Lab:** test masking, glossary-aware reranking, BLEU, and a quick first-page layout snapshot without committing to a full translation
 
-### 6) CLI usage
+### 7) CLI usage
 
 ```bash
 python3 -m scitrans_lm translate --input path/to/input.pdf --output path/to/output.pdf --engine openai --direction en-fr --pages 1-5 --preserve-figures --quality-loops 4
@@ -110,13 +124,13 @@ python3 -m scitrans_lm engines
 python3 -m scitrans_lm keys
 ```
 
-### 7) Inspect layout extraction
+### 8) Inspect layout extraction
 
 ```bash
 python3 -m scitrans_lm inspect -i input.pdf --pages 1-3 --json report.json
 ```
 
-### 8) Evaluate translations (BLEU)
+### 9) Evaluate translations (BLEU)
 
 ```bash
 python3 -m scitrans_lm evaluate --ref data/refs.txt --hyp outputs/my_run.txt
