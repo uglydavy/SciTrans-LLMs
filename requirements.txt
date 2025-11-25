@@ -14,7 +14,7 @@ beautifulsoup4>=4.12.2
 lxml>=4.9.3
 huggingface_hub<1.0
 requests>=2.31.0
-googletrans==4.0.0-rc1
+deep-translator>=1.11.4
 pydantic==2.10.6
 
 # Optional translators (install on demand)

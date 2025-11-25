@@ -51,6 +51,8 @@ from .mask import mask_protected_segments, unmask
 from .refine.rerank import rerank_candidates
 from .refine.scoring import bleu
 from .translate.glossary import merge_glossaries
+from .diagnostics import collect_diagnostics, summarize_checks
+from .overview import get_component_map
 from .utils import parse_page_range
 
 
@@ -82,19 +84,32 @@ def launch():
 
     def do_translate(pdf_file, engine, direction, pages, preserve_figures, quality_loops, enable_rerank):
         if not pdf_file:
-            return None, "Please upload a PDF.", "", "", ""
+            return None, "Please upload a PDF before starting a run.", "", "", ""
         tmp = tempfile.NamedTemporaryFile(prefix="scitranslm_out_", suffix=".pdf", delete=False)
         out_path = tmp.name
         tmp.close()
         events: list[str] = []
         user_events: list[str] = []
+        stage_events: list[str] = []
 
         def log(msg: str):
             events.append(msg)
             print(f"[SciTrans-LM] {msg}")
-            if any(key in msg for key in ("Parsing layout", "Translating block", "Rendering translated overlay", "Saved translated PDF")):
+            if any(
+                key in msg
+                for key in (
+                    "Parsing layout",
+                    "Translating block",
+                    "Rendering translated overlay",
+                    "Saved translated PDF",
+                    "Reranking",
+                )
+            ):
                 if not user_events or user_events[-1] != msg:
                     user_events.append(msg)
+            if any(key in msg for key in ("Parsing layout", "Translating block", "Reranking", "Rendering")):
+                if not stage_events or stage_events[-1] != msg:
+                    stage_events.append(msg)
             progress(0, desc=msg)
 
         try:
@@ -118,14 +133,16 @@ def launch():
                 status_lines.append(" • ".join(user_events))
             preview_text = _preview_pdf_text(out_path, max_chars=1400)
             log_text = "\n".join(events[-120:])
-            return out_path, "\n".join(status_lines), summary, preview_text, log_text
+            timeline = "\n".join(f"• {m}" for m in stage_events[-12:]) or "Awaiting next run."
+            return out_path, "\n".join(status_lines), summary, preview_text, timeline
         except Exception as e:
             try:
                 os.unlink(out_path)
             except OSError:
                 pass
             log_text = "\n".join(events[-120:]) if events else ""
-            return None, f"Error: {e}", "", "", log_text
+            timeline = "\n".join(f"• {m}" for m in stage_events[-12:]) if stage_events else ""
+            return None, f"Error: {e}", "", "", timeline or log_text
 
     def fetch_remote_pdf(url_text: str):
         if not url_text or not url_text.strip():
@@ -220,6 +237,31 @@ def launch():
         except Exception as exc:  # noqa: BLE001
             return f"Scoring failed: {exc}"
 
+    def run_diagnostics_ui():
+        checks = collect_diagnostics()
+        icons = {"ok": "✅", "warn": "⚠️", "error": "❌"}
+        lines = ["Environment + assets"]
+        for check in checks:
+            prefix = icons.get(check.status, "•")
+            lines.append(f"{prefix} **{check.name}:** {check.detail}")
+        summary = summarize_checks(checks)
+        lines.append(
+            f"\nSummary: {summary['ok']} OK, {summary['warn']} warning(s), {summary['error']} error(s)."
+        )
+        return "\n".join(lines)
+
+    def show_component_map():
+        lines = ["Architecture map"]
+        for comp in get_component_map():
+            lines.append(f"### {comp.name}")
+            lines.append(comp.responsibility)
+            if comp.key_files:
+                lines.append("Files: " + ", ".join(comp.key_files))
+            if comp.notes:
+                lines.append(f"Notes: {comp.notes}")
+            lines.append("")
+        return "\n".join(lines)
+
     def upload_glossary(file_obj):
         if not file_obj:
             return "Upload a CSV with 'source,target' columns to enforce terminology."
@@ -232,6 +274,7 @@ def launch():
     #summary-text {text-align:center; color:#1f2937;}
     #preview-box textarea {min-height:220px;}
     .compact-row {gap: 0.6rem;}
+    .log-box textarea {min-height: 180px;}
     """
 
     with gr.Blocks(title="SciTrans-LM – EN↔FR PDF Translator", css=css, theme=gr.themes.Soft()) as demo:
@@ -267,10 +310,11 @@ def launch():
                         status = gr.Markdown("<div id='status-text'><strong>Ready.</strong></div>")
                         summary = gr.Markdown("", elem_id="summary-text")
                         pipeline_log = gr.Textbox(
-                            label="Pipeline log (latest run)",
+                            label="Pipeline timeline (latest run)",
                             lines=8,
                             interactive=False,
-                            placeholder="Progress, OCR fallbacks, and rerank steps will appear here after translation.",
+                            elem_classes=["log-box"],
+                            placeholder="Parsing layout → translating blocks → reranking → rendering.",
                         )
                     with gr.Column(scale=5, variant="panel"):
                         preview = gr.Textbox(label="Preview (first pages)", lines=10, interactive=False, elem_id="preview-box")
@@ -354,6 +398,22 @@ def launch():
                             return "\n".join(lines)
 
                         quick_layout_btn.click(_quick_layout, inputs=[pdf], outputs=[quick_layout_out])
+
+            with gr.Tab("System Check"):
+                gr.Markdown(
+                    "Verify dependencies, models, and keys before launching a long translation run."
+                )
+                with gr.Row(equal_height=True, elem_classes="compact-row"):
+                    with gr.Column(scale=6, variant="panel"):
+                        gr.Markdown("Environment and assets")
+                        diag_btn = gr.Button("Run diagnostics", variant="secondary")
+                        diag_out = gr.Markdown("Status will appear here.")
+                        diag_btn.click(run_diagnostics_ui, outputs=[diag_out])
+                    with gr.Column(scale=6, variant="panel"):
+                        gr.Markdown("Architecture map")
+                        map_btn = gr.Button("Show code map", variant="secondary")
+                        map_out = gr.Markdown("Find key modules and files without digging through folders.")
+                        map_btn.click(show_component_map, outputs=[map_out])
 
     try:
         demo.launch()

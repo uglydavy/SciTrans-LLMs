@@ -5,7 +5,9 @@ from typing import Dict, Optional
 
 import typer
 from rich import print as rprint
+from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
 
 from . import __version__
 from .bootstrap import ensure_default_glossary, ensure_layout_model, run_all
@@ -13,6 +15,8 @@ from .ingest.analyzer import analyze_document
 from .keys import list_keys as stored_keys
 from .keys import set_key as store_key
 from .pipeline import translate_document
+from .diagnostics import collect_diagnostics, summarize_checks
+from .overview import get_component_map
 from .utils import parse_page_range
 
 app = typer.Typer(add_completion=False, help="SciTrans-LM – EN↔FR scientific PDF translator (GUI + CLI)")
@@ -40,6 +44,56 @@ def setup(
         rprint("[green]✔ Default glossary created (data/glossary/default_en_fr.csv).[/green]")
     if not (all or yolo or glossary):
         run_all()
+
+
+@app.command()
+def doctor(json_output: bool = typer.Option(False, "--json", help="Emit diagnostics as JSON instead of a table")):
+    """Inspect dependencies, models, and keys to catch issues early."""
+
+    checks = collect_diagnostics()
+    if json_output:
+        print(json.dumps([c.__dict__ for c in checks], indent=2))
+        return
+
+    table = Table(title="SciTrans-LM environment health", show_lines=True)
+    table.add_column("Status", justify="center")
+    table.add_column("Item")
+    table.add_column("Detail")
+
+    icons = {"ok": "✅", "warn": "⚠️", "error": "❌"}
+    for c in checks:
+        table.add_row(icons.get(c.status, "•"), c.name, c.detail)
+
+    console = Console()
+    console.print(table)
+    summary = summarize_checks(checks)
+    rprint(
+        f"[bold]{summary['ok']} OK[/bold], "
+        f"[yellow]{summary['warn']} warning(s)[/yellow], "
+        f"[red]{summary['error']} error(s)[/red]."
+    )
+
+
+@app.command()
+def map(json_output: bool = typer.Option(False, "--json", help="Return the component map as JSON")):
+    """Show a concise architecture map so newcomers can find the right modules."""
+
+    components = get_component_map()
+    if json_output:
+        print(json.dumps([c.to_dict() for c in components], indent=2))
+        return
+
+    table = Table(title="SciTrans-LM component map", show_lines=True)
+    table.add_column("Component")
+    table.add_column("Responsibility")
+    table.add_column("Key files")
+    table.add_column("Notes")
+
+    for comp in components:
+        table.add_row(comp.name, comp.responsibility, "\n".join(comp.key_files), comp.notes)
+
+    console = Console()
+    console.print(table)
 
 
 @app.command()
@@ -173,7 +227,7 @@ def list_engines():
 
     engines = {
         "dictionary": "Offline glossary/dictionary (no key)",
-        "google-free": "Keyless googletrans backend",
+        "google-free": "Keyless Google backend (deep-translator community endpoint)",
         "openai": "Requires OPENAI_API_KEY or stored key",
         "deepl": "Requires DEEPL_API_KEY or stored key",
         "google": "Requires GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_API_KEY",
