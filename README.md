@@ -71,7 +71,9 @@ python3 -m scitrans_lm setup --all
 ```
 
 This step ensures `data/layout/layout_model.pt` exists and builds a **50+ term default glossary** at `data/glossary/default_en_fr.csv`.
-If you prefer to train DocLayout-YOLO on your data, see `scitrans_lm/yolo/train.py`.
+`setup --yolo` now attempts to download DocLayout-YOLO weights automatically (override the URL with
+`--layout-url` or `SCITRANSLM_LAYOUT_URL`). If download is blocked, a small placeholder is kept so translation continues while
+you fetch weights manually. If you prefer to train DocLayout-YOLO on your data, see `scitrans_lm/yolo/train.py`.
 If networked downloads fail, the app will still generate the built-in glossary so offline dictionary translation keeps working.
 
 ### 4) Store API keys securely (optional, only for online engines)
@@ -86,16 +88,6 @@ python3 -m scitrans_lm set-key perplexity
 
 This uses your OS keychain via `keyring` so you won’t be prompted each run.
 For offline-only usage, skip this and choose the `dictionary` engine (aliases: `offline`, `local`, `lexicon`) in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes. You can also pick `google-free` for a keyless (community) Google Translate backend powered by `deep-translator`.
-
-### 5) Run a quick health check (deps/models/keys)
-
-```bash
-python3 -m scitrans_lm doctor
-# or JSON output for CI/logs
-python3 -m scitrans_lm doctor --json
-```
-
-Use the **System Check** tab in the GUI to run the same diagnostics without leaving the browser.
 
 ### 5) Run a quick health check (deps/models/keys)
 
@@ -135,6 +127,8 @@ python3 -m scitrans_lm gui
 python3 -m scitrans_lm translate --input path/to/input.pdf --output path/to/output.pdf --engine openai --direction en-fr --pages 1-5 --preserve-figures --quality-loops 4
 # Quick preview without opening the PDF
 python3 -m scitrans_lm translate -i input.pdf -o output.pdf --engine google-free --preview
+# Show the exact system prompt used (after glossary injection)
+python3 -m scitrans_lm translate -i input.pdf -o output.pdf --show-prompt
 # List engines + key requirements
 python3 -m scitrans_lm engines
 # Check which keys are already stored (masked)

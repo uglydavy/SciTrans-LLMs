@@ -1,7 +1,9 @@
 
 from __future__ import annotations
 import csv
+import os
 import warnings
+from pathlib import Path
 from typing import Iterable, Tuple
 from .config import LAYOUT_MODEL, DEFAULT_GLOSSARY, LAYOUT_DIR, GLOSSARY_DIR
 
@@ -64,6 +66,12 @@ _BUILTIN_GLOSSARY: Tuple[Tuple[str, str], ...] = (
     ("performance", "performance"),
 )
 
+DEFAULT_LAYOUT_URL = "https://huggingface.co/airaria/DocLayout-YOLO/resolve/main/weights/doclaynet_yolov8_base.pt"
+
+_PLACEHOLDER_BYTES = b"SciTrans-LM placeholder weights. Run 'python3 -m scitrans_lm setup --yolo' to download/train.".ljust(
+    1024, b"\0"
+)
+
 
 def _write_glossary(rows: Iterable[Tuple[str, str]]) -> None:
     with DEFAULT_GLOSSARY.open("w", newline="", encoding="utf-8") as f:
@@ -71,22 +79,67 @@ def _write_glossary(rows: Iterable[Tuple[str, str]]) -> None:
         writer.writerow(["source", "target"])
         for src, tgt in rows:
             writer.writerow([src, tgt])
+def _is_placeholder(path: Path) -> bool:
+    try:
+        return not path.exists() or path.stat().st_size <= len(_PLACEHOLDER_BYTES)
+    except OSError:
+        return True
 
 
-def ensure_layout_model() -> None:
-    """Ensure layout model exists. If not, create a tiny placeholder and instruct the user."""
+def download_layout_model(url: str | None = None, timeout: int = 120) -> bool:
+    """Attempt to download a YOLO layout model.
+
+    The URL can be overridden with the ``SCITRANSLM_LAYOUT_URL`` environment
+    variable or the ``url`` argument. The function returns ``True`` if a file
+    was written successfully, and ``False`` on any error without raising so the
+    caller can fall back to a placeholder.
+    """
+
+    target = LAYOUT_MODEL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    url = os.environ.get("SCITRANSLM_LAYOUT_URL", url or DEFAULT_LAYOUT_URL)
+    if not url:
+        return False
+    try:
+        import requests
+    except Exception:
+        warnings.warn("Requests not available; cannot download YOLO weights automatically.")
+        return False
+
+    try:
+        with requests.get(url, stream=True, timeout=timeout) as resp:
+            resp.raise_for_status()
+            with target.open("wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        return True
+    except Exception as exc:
+        warnings.warn(
+            f"Failed to download layout model from {url}: {exc}. "
+            "Download manually and place the file at data/layout/layout_model.pt."
+        )
+        return False
+
+
+def ensure_layout_model(prefer_download: bool = True, model_url: str | None = None) -> None:
+    """Ensure a usable layout model exists.
+
+    Attempts to download a DocLayout-YOLO checkpoint when missing or when a
+    placeholder is detected. If download fails, a placeholder is kept so the
+    rest of the pipeline can still run without detection.
+    """
 
     LAYOUT_DIR.mkdir(parents=True, exist_ok=True)
-    if LAYOUT_MODEL.exists():
+    if not _is_placeholder(LAYOUT_MODEL):
         return
-    # Create a small placeholder. Real model will be downloaded/trained by setup.
-    LAYOUT_MODEL.write_bytes(
-        b"SciTrans-LM placeholder weights. Run 'python3 -m scitrans_lm setup --yolo' to download/train.".ljust(
-            1024, b"\0"
-        )
-    )
+    if prefer_download and download_layout_model(model_url):
+        return
+    if not LAYOUT_MODEL.exists():
+        LAYOUT_MODEL.write_bytes(_PLACEHOLDER_BYTES)
     warnings.warn(
-        "No layout model detected; created a placeholder. Run 'python3 -m scitrans_lm setup --yolo' to download or train a DocLayout model.",
+        "Using placeholder layout weights. Run 'python3 -m scitrans_lm setup --yolo' "
+        "with internet access or place a DocLayout-YOLO checkpoint at data/layout/layout_model.pt.",
         RuntimeWarning,
     )
 

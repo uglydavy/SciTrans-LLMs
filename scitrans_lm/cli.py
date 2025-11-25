@@ -11,6 +11,7 @@ from rich.table import Table
 
 from . import __version__
 from .bootstrap import ensure_default_glossary, ensure_layout_model, run_all
+from .overview import get_component_map
 from .ingest.analyzer import analyze_document
 from .keys import list_keys as stored_keys
 from .keys import set_key as store_key
@@ -34,10 +35,15 @@ def setup(
     all: bool = typer.Option(False, "--all", help="Run all setup steps"),
     yolo: bool = typer.Option(False, "--yolo", help="Ensure/download YOLO layout model"),
     glossary: bool = typer.Option(False, "--glossary", help="Create default glossary"),
+    layout_url: Optional[str] = typer.Option(
+        None, "--layout-url", help="Custom URL for DocLayout-YOLO weights (overrides default)"
+    ),
 ):
     if all or yolo:
-        ensure_layout_model()
-        rprint("[green]✔ Layout model placeholder ensured. Run training/downloader to replace with real weights.[/green]")
+        ensure_layout_model(model_url=layout_url)
+        rprint(
+            "[green]✔ Layout model checked. If download failed, place weights at data/layout/layout_model.pt[/green]"
+        )
     if all or glossary:
         ensure_default_glossary()
         rprint("[green]✔ Default glossary created (data/glossary/default_en_fr.csv).[/green]")
@@ -96,6 +102,7 @@ def translate(
     rerank: bool = typer.Option(True, "--rerank/--no-rerank", help="Enable glossary-aware reranking"),
     preview: bool = typer.Option(False, "--preview/--no-preview", help="Print a short preview of the translated PDF"),
     preview_chars: int = typer.Option(600, "--preview-chars", min=120, max=3200, help="Maximum characters to show when previewing"),
+    show_prompt: bool = typer.Option(False, "--show-prompt", help="Print the system prompt used for translation"),
     quiet: bool = typer.Option(False, "--quiet", help="Reduce console noise; still prints final status"),
 ):
     events: list[str] = []
@@ -138,6 +145,17 @@ def translate(
             rprint(snippet)
         else:
             rprint("[yellow]Preview unavailable (no extractable text).[/yellow]")
+    if show_prompt:
+        ensure_default_glossary(refresh_remote=True)
+        from .translate.glossary import merge_glossaries
+        from .refine.prompting import build_prompt
+        from .translate.memory import TranslationMemory
+
+        glossary = merge_glossaries()
+        src, tgt = ("English", "French") if direction.lower() == "en-fr" else ("French", "English")
+        prompt = build_prompt(src, tgt, glossary, memory=TranslationMemory(max_entries=0))
+        rprint("[bold]System prompt used for this run:[/bold]")
+        rprint(prompt)
 
 
 @app.command()
@@ -163,6 +181,22 @@ def inspect(
     if json_output:
         json_output.write_text(json.dumps([s.__dict__ for s in summaries], indent=2), encoding="utf-8")
         rprint(f"[green]✔ Saved analysis to {json_output}[/green]")
+
+
+@app.command(name="map")
+def _map():
+    """Display a quick architecture map of major modules."""
+
+    table = Table(title="SciTrans-LM module map", show_lines=True)
+    table.add_column("Component", style="cyan")
+    table.add_column("Responsibility")
+    table.add_column("Key files")
+    table.add_column("Notes")
+
+    for comp in get_component_map():
+        table.add_row(comp.name, comp.responsibility, "\n".join(comp.key_files), comp.notes)
+    console = Console()
+    console.print(table)
 
 
 @app.command()

@@ -244,7 +244,7 @@ def _iterative_translate(
             _notify(progress, "Accepted translation without further refinement.")
             break
         prompt = refine_prompt(base_prompt, evaluation, iteration=i)
-    if enable_rerank:
+    if enable_rerank and len(attempts) > 1:
         _notify(progress, "Reranking candidates for fluency/glossary alignment…")
         return rerank_candidates(text, attempts, glossary).text
     return (attempts[-1] if attempts else text) or text
