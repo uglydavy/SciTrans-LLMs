@@ -52,7 +52,6 @@ from .refine.rerank import rerank_candidates
 from .refine.scoring import bleu
 from .translate.glossary import merge_glossaries
 from .diagnostics import collect_diagnostics, summarize_checks
-from .overview import get_component_map
 from .utils import parse_page_range
 
 
@@ -250,18 +249,6 @@ def launch():
         )
         return "\n".join(lines)
 
-    def show_component_map():
-        lines = ["Architecture map"]
-        for comp in get_component_map():
-            lines.append(f"### {comp.name}")
-            lines.append(comp.responsibility)
-            if comp.key_files:
-                lines.append("Files: " + ", ".join(comp.key_files))
-            if comp.notes:
-                lines.append(f"Notes: {comp.notes}")
-            lines.append("")
-        return "\n".join(lines)
-
     def upload_glossary(file_obj):
         if not file_obj:
             return "Upload a CSV with 'source,target' columns to enforce terminology."
@@ -403,17 +390,9 @@ def launch():
                 gr.Markdown(
                     "Verify dependencies, models, and keys before launching a long translation run."
                 )
-                with gr.Row(equal_height=True, elem_classes="compact-row"):
-                    with gr.Column(scale=6, variant="panel"):
-                        gr.Markdown("Environment and assets")
-                        diag_btn = gr.Button("Run diagnostics", variant="secondary")
-                        diag_out = gr.Markdown("Status will appear here.")
-                        diag_btn.click(run_diagnostics_ui, outputs=[diag_out])
-                    with gr.Column(scale=6, variant="panel"):
-                        gr.Markdown("Architecture map")
-                        map_btn = gr.Button("Show code map", variant="secondary")
-                        map_out = gr.Markdown("Find key modules and files without digging through folders.")
-                        map_btn.click(show_component_map, outputs=[map_out])
+                diag_btn = gr.Button("Run diagnostics", variant="secondary")
+                diag_out = gr.Markdown("Status will appear here.")
+                diag_btn.click(run_diagnostics_ui, outputs=[diag_out])
 
     try:
         demo.launch()

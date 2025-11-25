@@ -16,7 +16,6 @@ from .keys import list_keys as stored_keys
 from .keys import set_key as store_key
 from .pipeline import translate_document
 from .diagnostics import collect_diagnostics, summarize_checks
-from .overview import get_component_map
 from .utils import parse_page_range
 
 app = typer.Typer(add_completion=False, help="SciTrans-LM – EN↔FR scientific PDF translator (GUI + CLI)")
@@ -72,28 +71,6 @@ def doctor(json_output: bool = typer.Option(False, "--json", help="Emit diagnost
         f"[yellow]{summary['warn']} warning(s)[/yellow], "
         f"[red]{summary['error']} error(s)[/red]."
     )
-
-
-@app.command()
-def map(json_output: bool = typer.Option(False, "--json", help="Return the component map as JSON")):
-    """Show a concise architecture map so newcomers can find the right modules."""
-
-    components = get_component_map()
-    if json_output:
-        print(json.dumps([c.to_dict() for c in components], indent=2))
-        return
-
-    table = Table(title="SciTrans-LM component map", show_lines=True)
-    table.add_column("Component")
-    table.add_column("Responsibility")
-    table.add_column("Key files")
-    table.add_column("Notes")
-
-    for comp in components:
-        table.add_row(comp.name, comp.responsibility, "\n".join(comp.key_files), comp.notes)
-
-    console = Console()
-    console.print(table)
 
 
 @app.command()

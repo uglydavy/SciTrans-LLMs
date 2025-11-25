@@ -95,6 +95,16 @@ python3 -m scitrans_lm doctor --json
 
 Use the **System Check** tab in the GUI to run the same diagnostics without leaving the browser.
 
+### 5) Run a quick health check (deps/models/keys)
+
+```bash
+python3 -m scitrans_lm doctor
+# or JSON output for CI/logs
+python3 -m scitrans_lm doctor --json
+```
+
+Use the **System Check** tab in the GUI to run the same diagnostics without leaving the browser.
+
 ### Free/offline usage cheat sheet
 
 - No keys? Pick `google-free` (keyless) or `dictionary`/`offline` (pure glossary + adaptive web dictionary for rare terms).
@@ -116,7 +126,6 @@ python3 -m scitrans_lm gui
   - **Translate:** main workflow with upload/URL fetch and the pipeline timeline
   - **Debug / QA:** run the analyzer only to check segmentation before translating
   - **Pipeline Lab:** test masking, glossary-aware reranking, BLEU, and a quick first-page layout snapshot without committing to a full translation
-  - **System Check:** run diagnostics and view the architecture map so you know where to extend the pipeline
 
 ### 7) CLI usage
 
