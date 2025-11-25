@@ -204,7 +204,7 @@ def list_engines():
 
     engines = {
         "dictionary": "Offline glossary/dictionary (no key)",
-        "google-free": "Keyless googletrans backend",
+        "google-free": "Keyless Google backend (deep-translator community endpoint)",
         "openai": "Requires OPENAI_API_KEY or stored key",
         "deepl": "Requires DEEPL_API_KEY or stored key",
         "google": "Requires GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_API_KEY",

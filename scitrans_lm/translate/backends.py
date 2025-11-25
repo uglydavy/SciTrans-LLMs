@@ -218,26 +218,26 @@ class GoogleTranslator(BaseTranslator):
 
 
 class GoogleFreeTranslator(BaseTranslator):
-    """Free, keyless translator built on googletrans (community API)."""
+    """Free, keyless translator built on deep-translator's community Google endpoint."""
 
     def __init__(self):
         try:
-            from googletrans import Translator
+            from deep_translator import GoogleTranslator as CommunityGoogleTranslator
 
-            self._client = Translator()
+            self._translator_cls = CommunityGoogleTranslator
         except Exception as exc:
             raise RuntimeError(
-                "googletrans not installed. Run: pip install googletrans==4.0.0-rc1"
+                "deep-translator not installed. Run: pip install 'deep-translator>=1.11.4'"
             ) from exc
 
     def translate(self, texts, src, tgt, prompt: str = "", glossary=None, context: Optional[TranslationMemory] = None):
         tgt_code = "fr" if tgt.lower().startswith("fr") else "en"
         src_code = "en" if tgt_code == "fr" else "fr"
+        translator = self._translator_cls(source=src_code, target=tgt_code)
         results = []
         for text in texts:
             try:
-                res = self._client.translate(text, src=src_code, dest=tgt_code)
-                results.append(res.text)
+                results.append(translator.translate(text))
             except Exception:
                 results.append(text)
         return results

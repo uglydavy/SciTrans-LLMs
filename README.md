@@ -5,7 +5,7 @@ A layout-preserving scientific PDF translator for **English ↔ French** with:
 - Placeholder masking (math/tables) and glossary enforcement
 - Translation memory + adaptive prompts for coherence across sections
 - Reranking and self-evaluation to reject weak translations
-- Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders, **free Google Translate via googletrans**) + **offline glossary/dictionary fallback**
+- Multiple engines (OpenAI, DeepL, Google, DeepSeek, Perplexity placeholders, **free Google Translate via deep-translator**) + **offline glossary/dictionary fallback**
 - Modern web GUI (Gradio) with drag-and-drop, **Pipeline Lab** for testing masking/rerank/BLEU, and page-range selection
 - CLI parity for automation + document inspector for layout debugging, now with a visible progress bar
 - Secure API key handling with OS keychain (`keyring`)
@@ -35,22 +35,27 @@ SciTrans-LM started as a learning project inspired by PDFMathTranslate, but it n
 
 ## Quick Start
 
-### 1) Create a virtual environment (recommended)
+### 1) Create a clean virtual environment (recommended)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate   # macOS/Linux
 # .venv\Scripts\activate  # Windows PowerShell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-### 2) Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
+If you see a `No such file or directory` error, delete any partially created `.venv` folder first (`rm -rf .venv`) and rerun the commands above.
 
 > **Torch & YOLO:** If PyTorch isn't auto-installed by `ultralytics`, install a wheel appropriate for your system:
 > https://pytorch.org/get-started/locally/
+
+### 2) Already have an environment? Install/refresh dependencies
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
 ### 3) One-time setup (ensure model + glossary)
 
@@ -78,7 +83,17 @@ python3 -m scitrans_lm set-key perplexity
 ```
 
 This uses your OS keychain via `keyring` so you won’t be prompted each run.
-For offline-only usage, skip this and choose the `dictionary` engine (aliases: `offline`, `local`, `lexicon`) in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes. You can also pick `google-free` for a keyless (community) Google Translate backend powered by `googletrans`.
+For offline-only usage, skip this and choose the `dictionary` engine (aliases: `offline`, `local`, `lexicon`) in GUI/CLI. If an online engine fails at runtime, the pipeline will **automatically fall back** to the glossary/dictionary translator so the job still finishes. You can also pick `google-free` for a keyless (community) Google Translate backend powered by `deep-translator`.
+
+### 5) Run a quick health check (deps/models/keys)
+
+```bash
+python3 -m scitrans_lm doctor
+# or JSON output for CI/logs
+python3 -m scitrans_lm doctor --json
+```
+
+Use the **System Check** tab in the GUI to run the same diagnostics without leaving the browser.
 
 ### 5) Run a quick health check (deps/models/keys)
 
@@ -122,6 +137,10 @@ python3 -m scitrans_lm translate -i input.pdf -o output.pdf --engine google-free
 python3 -m scitrans_lm engines
 # Check which keys are already stored (masked)
 python3 -m scitrans_lm keys
+# Run environment/model/key diagnostics from the terminal
+python3 -m scitrans_lm doctor
+# View a concise architecture map to locate modules quickly
+python3 -m scitrans_lm map
 ```
 
 ### 8) Inspect layout extraction
@@ -138,6 +157,13 @@ python3 -m scitrans_lm evaluate --ref data/refs.txt --hyp outputs/my_run.txt
 python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 ```
 
+### 10) Find the right file quickly (architecture map)
+
+- CLI: `python3 -m scitrans_lm map`
+- GUI: open **System Check → Show code map**
+
+Both views summarize the main modules (ingestion, masking, translation backends, refinement, rendering, diagnostics) with their filenames so contributors know where to jump for changes.
+
 ## Features & Notes
 
 - **YOLO mandatory:** The pipeline requires a YOLO layout model at `data/layout/layout_model.pt`. First-run setup will create a placeholder if download/training is unavailable.
@@ -145,6 +171,7 @@ python3 -m scitrans_lm evaluate --ref refs_dir --hyp hyps_dir
 - **Glossary:** A populated EN↔FR glossary (50+ core research terms) is created on install. You can **upload your own** `.csv`, `.txt`, or `.docx` glossary from the GUI, or place files under `data/glossary/`.
 - **Engines:** `openai`, `deepl`, `google`, `google-free` (keyless), `deepseek`, `perplexity` (pluggable). If a services SDK isn’t installed, you’ll get a friendly message.
 - **Offline fallback:** If an online engine fails (missing key, API credit, etc.), translation automatically switches to the dictionary/glossary engine instead of aborting. The keyless `google-free` backend offers a free option when paid APIs are unreachable.
+- **Dependency-friendly keyless Google:** The `google-free` backend now uses `deep-translator` (no strict `httpx` pin), so it installs cleanly alongside Gradio and the rest of the stack.
 - **Progress visibility:** CLI logs each stage (layout parse, detection, per-block translation, rerank, overlay) with a Rich spinner/bar. The GUI shows concise status while Pipeline Lab and rerank logs keep details handy without scrolling.
 - **Translation memory & rerank:** Prompts include recent segments; reranking scores glossary hits and fluency before returning output.
 - **Inspection:** `inspect` reveals headings/captions vs paragraphs to validate layout parsing.
