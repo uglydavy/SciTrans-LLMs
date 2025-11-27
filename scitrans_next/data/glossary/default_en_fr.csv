@@ -1,0 +1,56 @@
+source,target
+machine learning,apprentissage automatique
+deep learning,apprentissage profond
+neural network,réseau de neurones
+dataset,jeu de données
+training set,jeu d'apprentissage
+test set,jeu de test
+validation set,jeu de validation
+inference,inférence
+probability,probabilité
+statistical model,modèle statistique
+loss function,fonction de perte
+gradient,gradient
+optimizer,optimiseur
+learning rate,taux d'apprentissage
+epoch,itération complète
+batch size,taille de lot
+regularization,régularisation
+dropout,abandon aléatoire
+activation function,fonction d'activation
+convolution,convolution
+embedding,encodage vectoriel
+sequence,séquence
+token,jeton
+transformer,transformeur
+attention,mécanisme d'attention
+cross entropy,entropie croisée
+precision,précision
+recall,rappel
+f1 score,score f1
+accuracy,exactitude
+baseline,référence
+hyperparameter,hyperparamètre
+normalization,normalisation
+standard deviation,écart type
+variance,variance
+statistical significance,signification statistique
+p value,valeur p
+confidence interval,intervalle de confiance
+random variable,variable aléatoire
+probability distribution,distribution de probabilité
+gaussian,gaussien
+bayesian,bayésien
+posterior,postérieure
+likelihood,vraisemblance
+prior,a priori
+markov chain,chaîne de markov
+monte carlo,monte-carlo
+stochastic,stochastique
+deterministic,déterministe
+experimental setup,dispositif expérimental
+reproducibility,reproductibilité
+open source,code ouvert
+throughput,débit
+latency,latence
+performance,performance

@@ -1,0 +1,536 @@
+"""
+PDF parsing with layout detection.
+
+This module extracts structured content from PDFs while preserving
+layout information for faithful reconstruction.
+
+Approaches:
+1. PyMuPDF text extraction with coordinate tracking
+2. DocLayout-YOLO for visual layout detection (optional)
+3. Heuristic-based block classification as fallback
+
+The parser produces a Document with:
+- Blocks for each content region (paragraph, heading, figure, etc.)
+- Bounding boxes for layout preservation
+- Font and style metadata for rendering
+"""
+
+from __future__ import annotations
+
+import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional, Iterator
+
+from scitrans_next.models import (
+    Document, Segment, Block, BlockType, BoundingBox
+)
+
+
+@dataclass
+class TextSpan:
+    """A span of text with position and style information."""
+    text: str
+    bbox: BoundingBox
+    font_name: str = ""
+    font_size: float = 12.0
+    is_bold: bool = False
+    is_italic: bool = False
+    color: tuple = (0, 0, 0)
+    
+    @property
+    def is_likely_heading(self) -> bool:
+        """Heuristic: larger or bold text is likely a heading."""
+        return self.font_size > 14 or self.is_bold
+
+
+@dataclass
+class PageContent:
+    """Extracted content from a single PDF page."""
+    page_num: int
+    width: float
+    height: float
+    spans: list[TextSpan] = field(default_factory=list)
+    images: list[dict] = field(default_factory=list)
+
+
+class LayoutDetector(ABC):
+    """Abstract base for layout detection strategies."""
+    
+    @abstractmethod
+    def detect(self, page: PageContent) -> list[tuple[BoundingBox, BlockType]]:
+        """Detect layout regions on a page.
+        
+        Returns list of (bounding_box, block_type) pairs.
+        """
+        pass
+
+
+class HeuristicLayoutDetector(LayoutDetector):
+    """Rule-based layout detection without ML models.
+    
+    Uses heuristics based on:
+    - Font size (headings are larger)
+    - Position (headers/footers at page edges)
+    - Text patterns (equations contain math symbols)
+    - Spacing (paragraphs are separated by whitespace)
+    """
+    
+    def __init__(
+        self,
+        heading_size_threshold: float = 14.0,
+        header_margin: float = 50.0,
+        footer_margin: float = 50.0,
+    ):
+        self.heading_size_threshold = heading_size_threshold
+        self.header_margin = header_margin
+        self.footer_margin = footer_margin
+    
+    def detect(self, page: PageContent) -> list[tuple[BoundingBox, BlockType]]:
+        """Classify spans into block types based on heuristics."""
+        results = []
+        
+        for span in page.spans:
+            block_type = self._classify_span(span, page)
+            results.append((span.bbox, block_type))
+        
+        return results
+    
+    def _classify_span(self, span: TextSpan, page: PageContent) -> BlockType:
+        """Classify a single text span."""
+        text = span.text.strip()
+        bbox = span.bbox
+        
+        # Check for page header/footer
+        if bbox.y0 < self.header_margin:
+            return BlockType.HEADER
+        if bbox.y0 > page.height - self.footer_margin:
+            return BlockType.FOOTER
+        
+        # Check for equations (LaTeX patterns)
+        if self._looks_like_equation(text):
+            return BlockType.EQUATION
+        
+        # Check for code (monospace, special patterns)
+        if self._looks_like_code(text, span.font_name):
+            return BlockType.CODE
+        
+        # Check for headings (font size, bold, short text)
+        if span.is_likely_heading and len(text) < 200:
+            return BlockType.HEADING
+        
+        # Check for list items
+        if self._looks_like_list_item(text):
+            return BlockType.LIST_ITEM
+        
+        # Check for captions (starts with Figure/Table)
+        if self._looks_like_caption(text):
+            return BlockType.CAPTION
+        
+        # Check for references
+        if self._looks_like_reference(text):
+            return BlockType.REFERENCE
+        
+        # Default: paragraph
+        return BlockType.PARAGRAPH
+    
+    def _looks_like_equation(self, text: str) -> bool:
+        """Check if text looks like a mathematical equation."""
+        # LaTeX delimiters
+        if re.search(r'\$.*\$|\\\[|\\\]|\\begin\{equation', text):
+            return True
+        # High density of math symbols
+        math_chars = set('∑∫∂∇αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩ±×÷≤≥≠≈∞∈∉⊂⊃∪∩')
+        if sum(1 for c in text if c in math_chars) > len(text) * 0.1:
+            return True
+        return False
+    
+    def _looks_like_code(self, text: str, font_name: str) -> bool:
+        """Check if text looks like code."""
+        # Monospace fonts
+        if any(mono in font_name.lower() for mono in ['mono', 'courier', 'consolas']):
+            return True
+        # Code patterns
+        if re.search(r'^\s*(def |class |import |from |if |for |while |return )', text):
+            return True
+        if re.search(r'[{}\[\]();]', text) and '=' in text:
+            return True
+        return False
+    
+    def _looks_like_list_item(self, text: str) -> bool:
+        """Check if text is a list item."""
+        patterns = [
+            r'^[\s]*[-•●○◦▪▸►]\s',  # Bullet points
+            r'^[\s]*\d+[.)]\s',      # Numbered lists
+            r'^[\s]*[a-z][.)]\s',    # Lettered lists
+            r'^[\s]*\([a-z0-9]+\)\s', # Parenthesized
+        ]
+        return any(re.match(p, text, re.IGNORECASE) for p in patterns)
+    
+    def _looks_like_caption(self, text: str) -> bool:
+        """Check if text is a figure/table caption."""
+        return bool(re.match(
+            r'^(Figure|Fig\.|Table|Tab\.|Listing|Algorithm)\s*\d',
+            text,
+            re.IGNORECASE
+        ))
+    
+    def _looks_like_reference(self, text: str) -> bool:
+        """Check if text is a bibliography reference."""
+        # Starts with [number] or number.
+        if re.match(r'^\[\d+\]|\d+\.\s+[A-Z]', text):
+            return True
+        # Contains DOI or arXiv
+        if 'doi:' in text.lower() or 'arxiv:' in text.lower():
+            return True
+        return False
+
+
+class YOLOLayoutDetector(LayoutDetector):
+    """Layout detection using DocLayout-YOLO.
+    
+    This provides more accurate detection of:
+    - Figures and images
+    - Tables
+    - Multi-column layouts
+    - Complex document structures
+    
+    Requires: ultralytics, model weights
+    """
+    
+    def __init__(self, model_path: Optional[str] = None):
+        self.model = None
+        self.model_path = model_path
+        self._load_model()
+    
+    def _load_model(self):
+        """Load YOLO model if available."""
+        try:
+            from ultralytics import YOLO
+            if self.model_path and Path(self.model_path).exists():
+                self.model = YOLO(self.model_path)
+            else:
+                # Try default location
+                default_path = Path(__file__).parent.parent / "data" / "layout" / "layout_model.pt"
+                if default_path.exists():
+                    self.model = YOLO(str(default_path))
+        except ImportError:
+            pass  # ultralytics not installed
+    
+    @property
+    def is_available(self) -> bool:
+        return self.model is not None
+    
+    def detect(self, page: PageContent) -> list[tuple[BoundingBox, BlockType]]:
+        """Run YOLO detection on page image."""
+        if not self.is_available:
+            # Fall back to heuristic
+            return HeuristicLayoutDetector().detect(page)
+        
+        # TODO: Render page to image and run YOLO
+        # For now, fall back to heuristic
+        return HeuristicLayoutDetector().detect(page)
+    
+    # Class mapping from YOLO labels to BlockType
+    LABEL_MAP = {
+        "text": BlockType.PARAGRAPH,
+        "title": BlockType.HEADING,
+        "figure": BlockType.FIGURE,
+        "table": BlockType.TABLE,
+        "formula": BlockType.EQUATION,
+        "list": BlockType.LIST_ITEM,
+        "caption": BlockType.CAPTION,
+        "footnote": BlockType.FOOTNOTE,
+        "header": BlockType.HEADER,
+        "footer": BlockType.FOOTER,
+    }
+
+
+class PDFParser:
+    """Main PDF parser combining text extraction and layout detection.
+    
+    Usage:
+        parser = PDFParser()
+        doc = parser.parse("paper.pdf")
+        
+        for block in doc.all_blocks:
+            print(f"{block.block_type.name}: {block.source_text[:50]}...")
+    """
+    
+    def __init__(
+        self,
+        layout_detector: Optional[LayoutDetector] = None,
+        extract_images: bool = True,
+        merge_spans: bool = True,
+    ):
+        self.layout_detector = layout_detector or HeuristicLayoutDetector()
+        self.extract_images = extract_images
+        self.merge_spans = merge_spans
+    
+    def parse(
+        self,
+        pdf_path: str | Path,
+        pages: Optional[list[int]] = None,
+        source_lang: str = "en",
+        target_lang: str = "fr",
+    ) -> Document:
+        """Parse a PDF file into a Document.
+        
+        Args:
+            pdf_path: Path to PDF file
+            pages: Optional list of page numbers (0-indexed)
+            source_lang: Source language code
+            target_lang: Target language code
+            
+        Returns:
+            Document with extracted blocks and layout info
+        """
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            raise ImportError("PyMuPDF is required. Install with: pip install PyMuPDF")
+        
+        pdf_path = Path(pdf_path)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+        
+        doc = fitz.open(str(pdf_path))
+        
+        # Determine pages to process
+        if pages is None:
+            page_nums = list(range(len(doc)))
+        else:
+            page_nums = [p for p in pages if 0 <= p < len(doc)]
+        
+        segments = []
+        
+        for page_num in page_nums:
+            page = doc[page_num]
+            page_content = self._extract_page(page, page_num)
+            segment = self._page_to_segment(page_content, page_num)
+            if segment.blocks:  # Only add non-empty segments
+                segments.append(segment)
+        
+        doc.close()
+        
+        return Document(
+            segments=segments,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            title=pdf_path.stem,
+            metadata={
+                "source_file": str(pdf_path),
+                "total_pages": len(page_nums),
+            }
+        )
+    
+    def _extract_page(self, page, page_num: int) -> PageContent:
+        """Extract text spans and images from a page."""
+        import fitz
+        
+        content = PageContent(
+            page_num=page_num,
+            width=page.rect.width,
+            height=page.rect.height,
+        )
+        
+        # Extract text with detailed info
+        blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
+        
+        for block in blocks:
+            if block["type"] == 0:  # Text block
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span.get("text", "").strip()
+                        if not text:
+                            continue
+                        
+                        bbox_coords = span.get("bbox", [0, 0, 0, 0])
+                        content.spans.append(TextSpan(
+                            text=text,
+                            bbox=BoundingBox(
+                                x0=bbox_coords[0],
+                                y0=bbox_coords[1],
+                                x1=bbox_coords[2],
+                                y1=bbox_coords[3],
+                                page=page_num,
+                            ),
+                            font_name=span.get("font", ""),
+                            font_size=span.get("size", 12.0),
+                            is_bold="bold" in span.get("font", "").lower(),
+                            is_italic="italic" in span.get("font", "").lower(),
+                            color=span.get("color", 0),
+                        ))
+            
+            elif block["type"] == 1 and self.extract_images:  # Image block
+                bbox = block.get("bbox", [0, 0, 0, 0])
+                content.images.append({
+                    "bbox": BoundingBox(
+                        x0=bbox[0], y0=bbox[1],
+                        x1=bbox[2], y1=bbox[3],
+                        page=page_num,
+                    ),
+                    "width": block.get("width", 0),
+                    "height": block.get("height", 0),
+                })
+        
+        return content
+    
+    def _page_to_segment(self, page: PageContent, page_num: int) -> Segment:
+        """Convert extracted page content to a Segment."""
+        blocks = []
+        
+        # Group spans into logical blocks
+        if self.merge_spans:
+            grouped_spans = self._group_spans(page.spans)
+        else:
+            grouped_spans = [[s] for s in page.spans]
+        
+        # Detect layout and classify blocks
+        layout_results = self.layout_detector.detect(page)
+        
+        for span_group in grouped_spans:
+            if not span_group:
+                continue
+            
+            # Merge text from spans
+            text = " ".join(s.text for s in span_group)
+            
+            # Use first span's bbox (could compute union)
+            bbox = span_group[0].bbox
+            
+            # Find matching layout classification
+            block_type = self._find_block_type(bbox, layout_results, span_group[0])
+            
+            # Extract font metadata
+            metadata = {
+                "font_name": span_group[0].font_name,
+                "font_size": span_group[0].font_size,
+                "is_bold": span_group[0].is_bold,
+                "is_italic": span_group[0].is_italic,
+            }
+            
+            blocks.append(Block(
+                source_text=text,
+                block_type=block_type,
+                bbox=bbox,
+                metadata=metadata,
+            ))
+        
+        # Add image blocks
+        for img in page.images:
+            blocks.append(Block(
+                source_text="[IMAGE]",
+                block_type=BlockType.FIGURE,
+                bbox=img["bbox"],
+                metadata={"width": img["width"], "height": img["height"]},
+            ))
+        
+        # Sort blocks by reading order (top-to-bottom, left-to-right)
+        blocks.sort(key=lambda b: (b.bbox.y0 if b.bbox else 0, b.bbox.x0 if b.bbox else 0))
+        
+        return Segment(
+            blocks=blocks,
+            title=f"Page {page_num + 1}",
+            metadata={"page_num": page_num},
+        )
+    
+    def _group_spans(self, spans: list[TextSpan]) -> list[list[TextSpan]]:
+        """Group spans that belong to the same logical block.
+        
+        Uses proximity and formatting to determine grouping.
+        """
+        if not spans:
+            return []
+        
+        # Sort by position
+        sorted_spans = sorted(spans, key=lambda s: (s.bbox.y0, s.bbox.x0))
+        
+        groups = []
+        current_group = [sorted_spans[0]]
+        
+        for span in sorted_spans[1:]:
+            prev = current_group[-1]
+            
+            # Check if this span continues the current group
+            vertical_gap = span.bbox.y0 - prev.bbox.y1
+            same_size = abs(span.font_size - prev.font_size) < 1
+            
+            # Group if close vertically and same formatting
+            if vertical_gap < span.font_size * 1.5 and same_size:
+                current_group.append(span)
+            else:
+                groups.append(current_group)
+                current_group = [span]
+        
+        if current_group:
+            groups.append(current_group)
+        
+        return groups
+    
+    def _find_block_type(
+        self,
+        bbox: BoundingBox,
+        layout_results: list[tuple[BoundingBox, BlockType]],
+        span: TextSpan,
+    ) -> BlockType:
+        """Find the block type for a bbox using layout results."""
+        # Check layout detection results
+        for layout_bbox, block_type in layout_results:
+            if self._bboxes_overlap(bbox, layout_bbox):
+                return block_type
+        
+        # Fallback: use span properties
+        if span.is_likely_heading:
+            return BlockType.HEADING
+        
+        return BlockType.PARAGRAPH
+    
+    def _bboxes_overlap(self, a: BoundingBox, b: BoundingBox) -> bool:
+        """Check if two bounding boxes overlap significantly."""
+        # Compute intersection
+        x0 = max(a.x0, b.x0)
+        y0 = max(a.y0, b.y0)
+        x1 = min(a.x1, b.x1)
+        y1 = min(a.y1, b.y1)
+        
+        if x1 <= x0 or y1 <= y0:
+            return False
+        
+        intersection = (x1 - x0) * (y1 - y0)
+        area_a = a.width * a.height
+        
+        # Overlap if intersection > 50% of smaller area
+        return intersection > area_a * 0.5
+
+
+def parse_pdf(
+    pdf_path: str | Path,
+    pages: Optional[list[int]] = None,
+    source_lang: str = "en",
+    target_lang: str = "fr",
+    use_yolo: bool = False,
+) -> Document:
+    """Convenience function to parse a PDF.
+    
+    Args:
+        pdf_path: Path to PDF file
+        pages: Optional list of page numbers (0-indexed)
+        source_lang: Source language
+        target_lang: Target language
+        use_yolo: Whether to use YOLO layout detection
+        
+    Returns:
+        Parsed Document
+    """
+    if use_yolo:
+        detector = YOLOLayoutDetector()
+        if not detector.is_available:
+            detector = HeuristicLayoutDetector()
+    else:
+        detector = HeuristicLayoutDetector()
+    
+    parser = PDFParser(layout_detector=detector)
+    return parser.parse(pdf_path, pages, source_lang, target_lang)
+

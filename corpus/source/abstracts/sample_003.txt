@@ -1,0 +1,6 @@
+Large language models have demonstrated remarkable capabilities in few-shot learning scenarios. By providing a small number of examples in the prompt, these models can adapt to new tasks without explicit fine-tuning.
+
+We explore the use of glossary-augmented prompting for domain-specific translation. Our approach injects relevant terminology mappings directly into the system prompt, guiding the model to use consistent translations for technical terms.
+
+Results indicate that glossary prompting improves terminology adherence from 67% to 94% while maintaining competitive BLEU scores. The method is particularly effective for specialized domains such as machine learning and computational linguistics where precise terminology is crucial.
+

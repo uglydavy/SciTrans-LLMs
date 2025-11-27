@@ -1,0 +1,6 @@
+L'apprentissage profond a révolutionné le domaine du traitement automatique du langage naturel, permettant des avancées sans précédent en traduction automatique, génération de texte et compréhension du langage. Cet article présente une étude complète des architectures basées sur les transformeurs et leurs applications à la traduction de documents scientifiques.
+
+Nous introduisons une nouvelle approche qui combine des invites sensibles à la terminologie avec une modélisation du contexte au niveau du document. Notre méthode exploite des glossaires bilingues pour assurer une traduction cohérente des termes spécifiques au domaine tout en maintenant la cohérence entre les paragraphes grâce à un mécanisme de fenêtre de contexte glissante.
+
+Les résultats expérimentaux sur le benchmark de traduction scientifique WMT démontrent que notre approche surpasse les méthodes existantes de 2,3 points BLEU tout en atteignant 95% d'adhérence au glossaire. Nous présentons également des études d'ablation montrant la contribution de chaque composant à la qualité globale de la traduction.
+

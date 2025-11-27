@@ -3,15 +3,105 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scitrans-lm"
-version = "0.2.0"
-description = "Layout-preserving EN↔FR scientific PDF translator (GUI + CLI)"
-authors = [{name="SciTrans-LM"}]
+name = "scitrans-next"
+version = "0.1.0"
+description = "Adaptive Document Translation Enhanced by LLMs - Research-grade layout-preserving PDF translator"
+authors = [{name = "SciTrans-Next Team"}]
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+keywords = [
+    "translation",
+    "pdf",
+    "scientific",
+    "llm",
+    "machine-translation",
+    "layout-preservation",
+    "terminology",
+    "glossary",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+dependencies = [
+    # Core
+    "pydantic>=2.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    
+    # PDF processing (will be used in PDF module)
+    "PyMuPDF>=1.23.0",
+    
+    # Evaluation
+    "sacrebleu>=2.3.0",
+    
+    # Optional LLM backends (soft dependencies)
+    # Users install what they need
+]
+
+[project.optional-dependencies]
+# LLM backends
+openai = ["openai>=1.0.0"]
+all-llm = ["openai>=1.0.0", "anthropic>=0.18.0"]
+
+# PDF layout detection
+layout = ["ultralytics>=8.1.0", "pillow>=10.0.0"]
+
+# Full installation
+full = [
+    "openai>=1.0.0",
+    "ultralytics>=8.1.0",
+    "pillow>=10.0.0",
+    "gradio>=4.0.0",
+]
+
+# Development
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
 
 [project.urls]
-Homepage = "https://example.com"
+Homepage = "https://github.com/scitrans-next"
+Documentation = "https://github.com/scitrans-next"
+Repository = "https://github.com/scitrans-next"
 
 [project.scripts]
-scitranslm = "scitrans_lm.cli:app"
+scitrans = "scitrans_next.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scitrans_next*"]
+
+[tool.setuptools.package-data]
+scitrans_next = ["data/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]  # Line too long - handled separately
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

@@ -1,0 +1,244 @@
+% ============================================================================
+% SciTrans-Next Thesis Chapter: Experimental Evaluation
+% ============================================================================
+% 
+% This is a template for your thesis experiments chapter.
+% It includes placeholders for all generated tables and figures.
+%
+% To use:
+%   1. Run experiments: python scripts/full_pipeline.py --backend openai
+%   2. Copy results/thesis/*.tex to your thesis folder
+%   3. Include this chapter: \include{chapter_experiments}
+%
+% ============================================================================
+
+\chapter{Experimental Evaluation}
+\label{ch:experiments}
+
+This chapter presents the experimental evaluation of our document translation system. We describe our experimental setup, present main results, analyze component contributions through ablation studies, and compare with baseline systems.
+
+% ============================================================================
+\section{Experimental Setup}
+\label{sec:setup}
+% ============================================================================
+
+\subsection{Dataset}
+
+We evaluate our system on a corpus of scientific abstracts in the English-French language pair. The corpus consists of:
+
+\begin{itemize}
+    \item \textbf{Source}: English scientific abstracts from [describe your sources]
+    \item \textbf{Reference}: Professional French translations
+    \item \textbf{Size}: [N] documents, [M] segments
+    \item \textbf{Domain}: Machine learning, natural language processing
+\end{itemize}
+
+% If you have corpus statistics, uncomment and fill in:
+% \begin{table}[h]
+% \centering
+% \begin{tabular}{lc}
+% \toprule
+% \textbf{Statistic} & \textbf{Value} \\
+% \midrule
+% Total documents & XXX \\
+% Total segments & XXX \\
+% Average segments per document & X.X \\
+% Average source length (tokens) & XXX \\
+% \bottomrule
+% \end{tabular}
+% \caption{Corpus statistics.}
+% \label{tab:corpus-stats}
+% \end{table}
+
+\subsection{Evaluation Metrics}
+
+We use the following metrics to evaluate translation quality:
+
+\begin{itemize}
+    \item \textbf{BLEU} \cite{papineni2002bleu}: Measures n-gram overlap with reference translations
+    \item \textbf{chrF++} \cite{popovic2017chrf}: Character-level F-score, more robust for morphologically rich languages
+    \item \textbf{Glossary Adherence}: Percentage of domain terms correctly translated according to our glossary
+    \item \textbf{Placeholder Preservation}: Percentage of protected content (formulas, URLs) preserved intact
+\end{itemize}
+
+\subsection{System Configuration}
+
+Our system was configured with the following settings:
+
+\begin{itemize}
+    \item \textbf{Translation backend}: [GPT-4 / DeepSeek / etc.]
+    \item \textbf{Glossary}: [N] domain-specific term pairs
+    \item \textbf{Context window}: [N] previous segments
+    \item \textbf{Refinement}: Glossary enforcement + coherence pass
+\end{itemize}
+
+% ============================================================================
+\section{Main Results}
+\label{sec:results}
+% ============================================================================
+
+Table~\ref{tab:main-results} presents the main translation quality results comparing our full system with baseline configurations.
+
+% Include generated table
+\input{results/thesis/results_table}
+
+Our system achieves [X.X] BLEU and [X.X] chrF++ scores, representing an improvement of [Y.Y] BLEU points over the baseline. Notably, glossary adherence reaches [Z]\%, demonstrating effective terminology control.
+
+\subsection{Qualitative Analysis}
+
+Beyond automatic metrics, we observe several qualitative improvements:
+
+\begin{enumerate}
+    \item \textbf{Consistent terminology}: Technical terms are translated consistently throughout documents
+    \item \textbf{Formula preservation}: Mathematical expressions are preserved without corruption
+    \item \textbf{Coherent references}: Pronouns and demonstratives maintain correct referents across sentences
+\end{enumerate}
+
+% Example translations
+% \begin{table}[h]
+% \centering
+% \small
+% \begin{tabular}{p{0.45\textwidth}p{0.45\textwidth}}
+% \toprule
+% \textbf{Source} & \textbf{Translation} \\
+% \midrule
+% Deep learning has revolutionized natural language processing. & L'apprentissage profond a révolutionné le traitement automatique du langage naturel. \\
+% \bottomrule
+% \end{tabular}
+% \caption{Example translation showing terminology consistency.}
+% \label{tab:example-translation}
+% \end{table}
+
+% ============================================================================
+\section{Ablation Study}
+\label{sec:ablation}
+% ============================================================================
+
+To understand the contribution of each component, we conduct an ablation study by systematically disabling individual features.
+
+% Include generated ablation table
+\input{results/thesis/ablation_table}
+
+\subsection{Component Analysis}
+
+Table~\ref{tab:contribution} quantifies each component's contribution to overall quality improvement.
+
+% Include generated contribution table
+\input{results/thesis/contribution_table}
+
+Key findings:
+
+\begin{itemize}
+    \item \textbf{Glossary enforcement} contributes the largest improvement (+X.X BLEU), confirming the importance of terminology control for scientific translation
+    \item \textbf{Document-level refinement} provides +X.X BLEU improvement by improving coherence
+    \item \textbf{Placeholder masking} ensures formula preservation with minimal impact on BLEU
+    \item \textbf{Context window} shows modest but consistent improvements in pronoun resolution
+\end{itemize}
+
+% ============================================================================
+\section{Baseline Comparison}
+\label{sec:baselines}
+% ============================================================================
+
+We compare our system with existing translation approaches:
+
+\begin{itemize}
+    \item \textbf{Google Translate}: Commercial neural MT system
+    \item \textbf{Naive LLM}: GPT-4 without glossary or context
+    \item \textbf{PDFMathTranslate}: Open-source layout-preserving translator
+\end{itemize}
+
+% Include baseline comparison if available
+% \input{results/thesis/baselines_table}
+
+Our system outperforms all baselines on glossary adherence while maintaining competitive BLEU scores. The improvement is particularly notable for:
+
+\begin{enumerate}
+    \item Technical terminology: [X]\% vs [Y]\% for baseline
+    \item Formula preservation: [X]\% vs [Y]\% for baseline
+    \item Cross-sentence coherence: [qualitative observation]
+\end{enumerate}
+
+% ============================================================================
+\section{Error Analysis}
+\label{sec:errors}
+% ============================================================================
+
+We analyze common error types in our system's output:
+
+\subsection{Terminology Errors}
+
+Despite glossary enforcement, some terms are missed when:
+\begin{itemize}
+    \item Terms appear in unusual grammatical forms
+    \item Context suggests alternative translations
+    \item Terms are part of larger phrases not in the glossary
+\end{itemize}
+
+\subsection{Coherence Issues}
+
+Remaining coherence issues include:
+\begin{itemize}
+    \item Long-range dependencies beyond context window
+    \item Implicit subjects in complex sentences
+    \item Domain-specific discourse conventions
+\end{itemize}
+
+% ============================================================================
+\section{Discussion}
+\label{sec:discussion}
+% ============================================================================
+
+Our experiments demonstrate that:
+
+\begin{enumerate}
+    \item \textbf{Terminology control is crucial}: Glossary enforcement provides the largest quality improvement for scientific translation
+    
+    \item \textbf{Document context matters}: Even simple context windows improve coherence, with larger windows providing diminishing returns
+    
+    \item \textbf{LLM refinement is effective}: Post-translation refinement catches errors missed during initial translation
+    
+    \item \textbf{Layout preservation is achievable}: Placeholder masking successfully protects formulas and special content
+\end{enumerate}
+
+\subsection{Limitations}
+
+Our approach has several limitations:
+
+\begin{itemize}
+    \item Requires curated glossaries for optimal performance
+    \item LLM API costs may limit large-scale deployment
+    \item PDF reconstruction quality depends on source document complexity
+\end{itemize}
+
+\subsection{Future Work}
+
+Promising directions for future research include:
+
+\begin{itemize}
+    \item Automatic glossary extraction from parallel corpora
+    \item Fine-tuning smaller models for specific domains
+    \item Multi-document translation with shared context
+    \item Interactive refinement with human feedback
+\end{itemize}
+
+% ============================================================================
+\section{Summary}
+\label{sec:summary}
+% ============================================================================
+
+This chapter presented a comprehensive evaluation of our document translation system. Key findings include:
+
+\begin{itemize}
+    \item Our system achieves [X.X] BLEU and [Z]\% glossary adherence on scientific abstracts
+    \item Ablation studies confirm the contribution of each component
+    \item Comparison with baselines demonstrates improvements in terminology control
+\end{itemize}
+
+These results support our thesis contributions:
+\begin{enumerate}
+    \item Terminology-constrained translation via glossary prompting and enforcement
+    \item Document-level coherence through context windows and refinement
+    \item Research-grade evaluation framework for systematic analysis
+\end{enumerate}
+
