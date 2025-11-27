@@ -1,6 +1,0 @@
-Le mécanisme d'attention est devenu un composant fondamental des architectures de réseaux de neurones modernes. Initialement introduit pour les modèles séquence-à-séquence, l'attention permet au modèle de se concentrer sur les parties pertinentes de l'entrée lors de la génération de chaque token de sortie.
-
-Dans ce travail, nous étudions l'application de l'attention multi-têtes à la préservation des formules scientifiques pendant la traduction. Nous proposons une stratégie de masquage qui protège les expressions mathématiques de la corruption tout en permettant au texte environnant d'être traduit avec une conscience complète du contexte.
-
-Nos expériences montrent que la combinaison du masquage par placeholder et de la traduction basée sur l'attention améliore significativement la préservation des équations, avec 98% des formules restant intactes après traduction contre 72% avec les approches de référence.
-

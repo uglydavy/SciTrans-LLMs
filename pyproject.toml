@@ -3,13 +3,13 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scitrans-next"
+name = "scitrans_llms"
 version = "0.1.0"
-description = "Adaptive Document Translation Enhanced by LLMs - Research-grade layout-preserving PDF translator"
-authors = [{name = "SciTrans-Next Team"}]
+description = "Adaptive Document Translation Enhanced by Technology based on LLMs - Research-grade layout-preserving PDF translator"
+authors = [{name = "Tchienkoua Franck-Davy"}]
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 keywords = [
     "translation",
     "pdf",
@@ -24,10 +24,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.9",
     "Topic :: Scientific/Engineering",
     "Topic :: Text Processing :: Linguistic",
 ]
@@ -73,19 +70,19 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/scitrans-next"
-Documentation = "https://github.com/scitrans-next"
-Repository = "https://github.com/scitrans-next"
+#Homepage = "https://github.com/uglydavySciTrans-LLMs"
+Documentation = "https://github.com/uglydavy/SciTrans-LLMs/blob/main/README.md"
+Repository = "https://github.com/uglydavy/SciTrans-LLMs"
 
 [project.scripts]
-scitrans = "scitrans_next.cli:main"
+scitrans = "scitrans_llms.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["scitrans_next*"]
+include = ["scitrans_llms*"]
 
 [tool.setuptools.package-data]
-scitrans_next = ["data/**/*"]
+scitrans_llms = ["data/**/*"]
 
 [tool.ruff]
 line-length = 100

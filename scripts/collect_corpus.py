@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Corpus collection script for SciTrans-Next.
+Corpus collection script for SciTrans-LLMs.
 
 Downloads and prepares parallel EN/FR scientific data from multiple sources:
 1. OPUS corpora (Scielo, EMEA, JRC-Acquis)
@@ -442,7 +442,7 @@ def main():
     args = parser.parse_args()
     
     console.print("\n[bold blue]═══════════════════════════════════════════[/]")
-    console.print("[bold blue]  SciTrans-Next Corpus Collection Tool[/]")
+    console.print("[bold blue]  SciTrans-LLMs Corpus Collection Tool[/]")
     console.print("[bold blue]═══════════════════════════════════════════[/]\n")
     
     console.print(f"Target: {args.target} documents")

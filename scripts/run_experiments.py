@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Master experiment runner for SciTrans-Next thesis research.
+Master experiment runner for SciTrans-LLMs thesis research.
 
 This script runs the complete experimental pipeline:
 1. Setup and validation
@@ -48,13 +48,13 @@ def check_setup():
     
     # Check imports
     try:
-        from scitrans_next import Document, TranslationPipeline
+        from scitrans_llms import Document, TranslationPipeline
         console.print("  [green]✓[/] Core modules")
     except ImportError as e:
         issues.append(f"Import error: {e}")
     
     # Check API keys for LLM backends
-    from scitrans_next.keys import KeyManager
+    from scitrans_llms.keys import KeyManager
     km = KeyManager()
     
     for service in ["openai", "deepseek", "anthropic"]:
@@ -78,7 +78,7 @@ def load_corpus(corpus_path: Path, quick: bool = False):
     """Load the test corpus."""
     console.print("\n[bold]2. Loading Corpus...[/]")
     
-    from scitrans_next.experiments.corpus import load_corpus, create_synthetic_corpus
+    from scitrans_llms.experiments.corpus import load_corpus, create_synthetic_corpus
     
     if not corpus_path.exists():
         console.print(f"  [yellow]Corpus not found at {corpus_path}[/]")
@@ -95,7 +95,7 @@ def run_ablation_experiments(corpus, backend: str = "dummy"):
     """Run ablation study experiments."""
     console.print("\n[bold]3. Running Ablation Study...[/]")
     
-    from scitrans_next.experiments.runner import ExperimentRunner
+    from scitrans_llms.experiments.runner import ExperimentRunner
     
     runner = ExperimentRunner(corpus, output_dir=project_root / "results" / "ablation")
     
@@ -134,7 +134,7 @@ def run_backend_comparison(corpus, backends: list[str]):
     """Compare different translation backends."""
     console.print("\n[bold]4. Comparing Backends...[/]")
     
-    from scitrans_next.experiments.runner import ExperimentRunner
+    from scitrans_llms.experiments.runner import ExperimentRunner
     
     runner = ExperimentRunner(corpus, output_dir=project_root / "results" / "backends")
     
@@ -158,7 +158,7 @@ def export_thesis_outputs(results):
     """Export thesis-ready tables and figures."""
     console.print("\n[bold]5. Exporting Thesis Outputs...[/]")
     
-    from scitrans_next.experiments.thesis import ThesisExporter
+    from scitrans_llms.experiments.thesis import ThesisExporter
     
     output_dir = project_root / "results" / "thesis"
     exporter = ThesisExporter(results, output_dir=output_dir)
@@ -172,7 +172,7 @@ def export_thesis_outputs(results):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run SciTrans-Next experiments")
+    parser = argparse.ArgumentParser(description="Run SciTrans-LLMs experiments")
     parser.add_argument("--corpus", type=Path, default=project_root / "corpus",
                        help="Path to corpus directory")
     parser.add_argument("--backend", type=str, default="dummy",
@@ -188,7 +188,7 @@ def main():
     args = parser.parse_args()
     
     console.print(Panel.fit(
-        "[bold blue]SciTrans-Next Experiment Runner[/]\n"
+        "[bold blue]SciTrans-LLMs Experiment Runner[/]\n"
         "Systematic evaluation for thesis research",
         border_style="blue"
     ))

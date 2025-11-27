@@ -1,6 +1,0 @@
-Les grands modèles de langue ont démontré des capacités remarquables dans les scénarios d'apprentissage à quelques exemples. En fournissant un petit nombre d'exemples dans l'invite, ces modèles peuvent s'adapter à de nouvelles tâches sans ajustement fin explicite.
-
-Nous explorons l'utilisation d'invites augmentées par glossaire pour la traduction spécifique à un domaine. Notre approche injecte les correspondances terminologiques pertinentes directement dans l'invite système, guidant le modèle à utiliser des traductions cohérentes pour les termes techniques.
-
-Les résultats indiquent que les invites avec glossaire améliorent l'adhérence terminologique de 67% à 94% tout en maintenant des scores BLEU compétitifs. La méthode est particulièrement efficace pour les domaines spécialisés tels que l'apprentissage automatique et la linguistique computationnelle où une terminologie précise est cruciale.
-

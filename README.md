@@ -1,6 +1,6 @@
-# SciTrans-Next
+# SciTrans-LLMs
 
-**Adaptive Document Translation Enhanced by LLMs**
+**Adaptive Document Translation Enhanced by Technology based on LLMs**
 
 A research-grade, layout-preserving translation system for scientific PDFs (EN↔FR).
 
@@ -9,7 +9,7 @@ A research-grade, layout-preserving translation system for scientific PDFs (EN�
 
 ## Overview
 
-SciTrans-Next implements a complete scientific document translation pipeline with three core research contributions:
+SciTrans-LLMs implements a complete scientific document translation pipeline with three core research contributions:
 
 ### 1. Terminology-Constrained, Layout-Preserving Translation
 - Structured document representation (blocks, segments, pages)
@@ -34,8 +34,8 @@ SciTrans-Next implements a complete scientific document translation pipeline wit
 
 ```bash
 # Clone and setup
-git clone https://github.com/scitrans-next/scitrans-next
-cd scitrans-next
+git clone https://github.com/uglydavy/SciTrans-LLMs
+cd scitrans_llms
 
 # Create virtual environment
 python3 -m venv .venv
@@ -48,10 +48,10 @@ pip install -e ".[full]"
 pip install -e .
 
 # Run the demo
-python -m scitrans_next.cli demo
+python3 -m scitrans_llms.cli demo
 
 # Check available backends
-python -m scitrans_next.cli info
+python3 -m scitrans_llms.cli info
 ```
 
 ## Usage
@@ -59,8 +59,8 @@ python -m scitrans_next.cli info
 ### Python API
 
 ```python
-from scitrans_next import Document, TranslationPipeline
-from scitrans_next.pipeline import PipelineConfig
+from scitrans_llms import Document, TranslationPipeline
+from scitrans_llms.pipeline import PipelineConfig
 
 # Create document from text
 doc = Document.from_text("""
@@ -89,9 +89,9 @@ print(result.stats)
 ### PDF Translation
 
 ```python
-from scitrans_next.ingest import parse_pdf
-from scitrans_next.render import render_pdf
-from scitrans_next.pipeline import TranslationPipeline, PipelineConfig
+from scitrans_llms.ingest import parse_pdf
+from scitrans_llms.render import render_pdf
+from scitrans_llms.pipeline import TranslationPipeline, PipelineConfig
 
 # Parse PDF with layout detection
 doc = parse_pdf("paper.pdf", source_lang="en", target_lang="fr")
@@ -107,7 +107,7 @@ render_pdf(doc, "paper.pdf", "paper_fr.pdf")
 ### LLM Translation with Context
 
 ```python
-from scitrans_next.translate.llm import OpenAITranslator, LLMConfig, MultiTurnTranslator
+from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig, MultiTurnTranslator
 
 # Configure LLM
 config = LLMConfig(model="gpt-4o", temperature=0.3)
@@ -124,8 +124,8 @@ result2 = translator.translate("It achieves state of the art results.")  # "It" 
 ### Evaluation
 
 ```python
-from scitrans_next.eval import run_evaluation, EvaluationRunner
-from scitrans_next.translate import get_default_glossary
+from scitrans_llms.eval import run_evaluation, EvaluationRunner
+from scitrans_llms.translate import get_default_glossary
 
 # Quick evaluation
 report = run_evaluation(
@@ -149,17 +149,17 @@ runner.save_report(report, "results.json")
 ### Ablation Studies
 
 ```python
-from scitrans_next.eval.ablation import AblationStudy, AblationConfig
-from scitrans_next.models import Document
+from scitrans_llms.eval.ablation import AblationStudy, AblationConfig
+from scitrans_llms.models import Document
 
 # Configure ablation
 config = AblationConfig(
     name="thesis_ablation",
-    test_glossary=True,      # With vs without glossary
-    test_context=True,       # With vs without document context
-    test_refinement=True,    # With vs without refinement
-    test_masking=True,       # With vs without masking
-    backends=["dummy"],      # Backends to test
+    test_glossary=True,  # With vs without glossary
+    test_context=True,  # With vs without document context
+    test_refinement=True,  # With vs without refinement
+    test_masking=True,  # With vs without masking
+    backends=["dummy"],  # Backends to test
 )
 
 # Run study
@@ -206,7 +206,7 @@ scitrans info
 ## Architecture
 
 ```
-scitrans_next/
+scitrans_llms/
 ├── __init__.py              # Package exports
 ├── models.py                # Document, Block, Segment data structures
 ├── masking.py               # Placeholder protection (formulas, code, URLs)
@@ -242,40 +242,40 @@ scitrans_next/
 ### Pipeline Configuration
 
 ```python
-from scitrans_next.pipeline import PipelineConfig
+from scitrans_llms.pipeline import PipelineConfig
 
 config = PipelineConfig(
     # Languages
     source_lang="en",
     target_lang="fr",
-    
+
     # Translation backend
     translator_backend="openai",  # dummy, dictionary, openai, deepseek, anthropic
     translator_kwargs={"model": "gpt-4o"},
-    
+
     # Feature toggles (for ablations)
-    enable_masking=True,          # Protect formulas, code, URLs
-    enable_glossary=True,         # Use terminology glossary
-    enable_context=True,          # Document-level context
-    enable_refinement=True,       # Post-translation refinement
-    
+    enable_masking=True,  # Protect formulas, code, URLs
+    enable_glossary=True,  # Use terminology glossary
+    enable_context=True,  # Document-level context
+    enable_refinement=True,  # Post-translation refinement
+
     # Glossary
-    glossary=my_glossary,         # Custom glossary (or use default)
-    glossary_in_prompt=True,      # Include in LLM prompt
-    glossary_post_process=True,   # Enforce after translation
-    
+    glossary=my_glossary,  # Custom glossary (or use default)
+    glossary_in_prompt=True,  # Include in LLM prompt
+    glossary_post_process=True,  # Enforce after translation
+
     # Refinement
-    refiner_mode="default",       # none, glossary, default, llm
-    
+    refiner_mode="default",  # none, glossary, default, llm
+
     # Candidate generation
-    num_candidates=1,             # >1 enables reranking
+    num_candidates=1,  # >1 enables reranking
 )
 ```
 
 ### LLM Configuration
 
 ```python
-from scitrans_next.translate.llm import LLMConfig
+from scitrans_llms.translate.llm import LLMConfig
 
 config = LLMConfig(
     model="gpt-4o",
@@ -318,10 +318,10 @@ pytest tests/ -v
 pytest tests/test_core.py::TestPipeline -v
 
 # Type checking
-mypy scitrans_next/
+mypy scitrans_llms/
 
 # Linting
-ruff check scitrans_next/
+ruff check scitrans_llms/
 ```
 
 ## Dependencies
@@ -346,12 +346,12 @@ MIT License - See [LICENSE](LICENSE)
 ## Citation
 
 ```bibtex
-@mastersthesis{scitrans_next_2024,
+@mastersthesis{scitrans_llms_2024,
   title = {Adaptive Document Translation Enhanced by Technology based on LLMs},
-  author = {Your Name},
-  year = {2024},
-  school = {Your University},
-  note = {Software available at https://github.com/scitrans-next}
+  author = {Tchienkoua Franck-Davy},
+  year = {2025},
+  school = {Wenzhou University},
+  note = {Software available at https://github.com/uglydavy/SciTrans-LLMs}
 }
 ```
 

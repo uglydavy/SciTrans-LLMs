@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quick test script to verify SciTrans-Next is working.
+Quick test script to verify SciTrans-LLMs is working.
 
 Runs a simple end-to-end test with sample data.
 
@@ -27,17 +27,17 @@ def run_quick_test(backend: str = "dummy"):
     """Run a quick end-to-end test."""
     
     console.print(Panel.fit(
-        "[bold]SciTrans-Next Quick Test[/]",
+        "[bold]SciTrans-LLMs Quick Test[/]",
         border_style="green"
     ))
     
     # 1. Test imports
     console.print("\n[bold]1. Testing imports...[/]")
     try:
-        from scitrans_next import Document, TranslationPipeline
-        from scitrans_next.pipeline import PipelineConfig
-        from scitrans_next.translate import get_default_glossary
-        from scitrans_next.eval.metrics import compute_bleu
+        from scitrans_llms import Document, TranslationPipeline
+        from scitrans_llms.pipeline import PipelineConfig
+        from scitrans_llms.translate import get_default_glossary
+        from scitrans_llms.eval.metrics import compute_bleu
         console.print("  [green]✓[/] All imports successful")
     except ImportError as e:
         console.print(f"  [red]✗[/] Import error: {e}")
@@ -126,7 +126,7 @@ Deep learning enables state of the art performance on machine translation tasks.
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Quick test for SciTrans-Next")
+    parser = argparse.ArgumentParser(description="Quick test for SciTrans-LLMs")
     parser.add_argument("--backend", "-b", type=str, default="dummy",
                        help="Translation backend to test")
     

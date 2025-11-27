@@ -45,7 +45,7 @@ def print_header():
     """Print welcome header."""
     console.print("\n")
     console.print(Panel.fit(
-        "[bold blue]SciTrans-Next Full Experiment Pipeline[/]\n"
+        "[bold blue]SciTrans-LLMs Full Experiment Pipeline[/]\n"
         "[dim]Complete thesis experiment automation[/]",
         border_style="blue"
     ))
@@ -61,8 +61,8 @@ def validate_setup():
     
     # Check core imports
     try:
-        from scitrans_next import Document, TranslationPipeline
-        from scitrans_next.pipeline import PipelineConfig
+        from scitrans_llms import Document, TranslationPipeline
+        from scitrans_llms.pipeline import PipelineConfig
         console.print("  [green]✓[/] Core modules")
     except ImportError as e:
         issues.append(f"Core import: {e}")
@@ -84,7 +84,7 @@ def validate_setup():
         console.print("  [dim]○[/] PyMuPDF not installed (optional for PDF)")
     
     # Check API keys
-    from scitrans_next.keys import KeyManager
+    from scitrans_llms.keys import KeyManager
     km = KeyManager()
     
     console.print("\n  [bold]API Keys:[/]")
@@ -122,7 +122,7 @@ def validate_corpus(corpus_path: Path, min_docs: int = 20):
         console.print(f"  [yellow]Corpus not found at {corpus_path}[/]")
         
         if Confirm.ask("  Create sample corpus?", default=True):
-            from scitrans_next.experiments.corpus import create_synthetic_corpus
+            from scitrans_llms.experiments.corpus import create_synthetic_corpus
             corpus = create_synthetic_corpus(corpus_path, num_documents=min_docs)
             console.print(f"  [green]✓[/] Created {len(corpus)} documents")
         else:
@@ -145,7 +145,7 @@ def validate_corpus(corpus_path: Path, min_docs: int = 20):
         console.print(f"  [green]✓[/] Corpus ready")
     
     # Load corpus
-    from scitrans_next.experiments.corpus import load_corpus
+    from scitrans_llms.experiments.corpus import load_corpus
     corpus = load_corpus(corpus_path)
     
     return corpus
@@ -158,14 +158,14 @@ def run_main_experiments(corpus, backend: str, output_dir: Path):
     console.print(f"  Backend: {backend}")
     console.print(f"  Documents: {len(corpus)}")
     
-    from scitrans_next.experiments.runner import ExperimentRunner, ExperimentConfig
+    from scitrans_llms.experiments.runner import ExperimentRunner, ExperimentConfig
     
     runner = ExperimentRunner(corpus, output_dir=output_dir / "main")
     
     # Full system configuration
     config = ExperimentConfig(
-        name="scitrans_full",
-        description="Full SciTrans-Next system",
+        name="scitrans_llms",
+        description="Full SciTrans-LLMs system",
         backend=backend,
         enable_glossary=True,
         enable_context=True,
@@ -200,7 +200,7 @@ def run_ablation_study(corpus, backend: str, output_dir: Path):
     console.print("\n[bold]Step 4: Running Ablation Study[/]")
     console.print("─" * 50)
     
-    from scitrans_next.experiments.runner import ExperimentRunner
+    from scitrans_llms.experiments.runner import ExperimentRunner
     
     runner = ExperimentRunner(corpus, output_dir=output_dir / "ablation")
     
@@ -245,7 +245,7 @@ def run_baseline_comparison(corpus, our_results: list, output_dir: Path):
     console.print("\n[bold]Step 5: Running Baseline Comparisons[/]")
     console.print("─" * 50)
     
-    from scitrans_next.eval.baselines import (
+    from scitrans_llms.eval.baselines import (
         BaselineComparison,
         GoogleTranslateBaseline,
         NaiveLLMBaseline,
@@ -302,7 +302,7 @@ def generate_thesis_outputs(all_results: list, output_dir: Path):
     console.print("\n[bold]Step 6: Generating Thesis Outputs[/]")
     console.print("─" * 50)
     
-    from scitrans_next.experiments.thesis import ThesisExporter
+    from scitrans_llms.experiments.thesis import ThesisExporter
     
     thesis_dir = output_dir / "thesis"
     exporter = ThesisExporter(all_results, output_dir=thesis_dir)

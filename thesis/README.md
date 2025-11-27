@@ -1,4 +1,4 @@
-# Thesis Materials for SciTrans-Next
+# Thesis Materials for SciTrans-LLMs
 
 This directory contains LaTeX templates and generated outputs for your thesis.
 
@@ -36,7 +36,7 @@ python scripts/full_pipeline.py --backend openai
 cp results/thesis/*.tex /path/to/your/thesis/tables/
 
 # Or include directly
-\input{../scitrans-next/results/thesis/results_table}
+\input{../scitrans_llms/results/thesis/results_table}
 ```
 
 ### 3. Include Chapter
@@ -66,7 +66,7 @@ In your main thesis file:
 The generated tables use standard LaTeX with `booktabs`. To customize:
 
 1. Edit the generated `.tex` files directly, or
-2. Modify `scitrans_next/experiments/thesis.py` to change formatting
+2. Modify `scitrans_llms/experiments/thesis.py` to change formatting
 
 ### Add Figures
 

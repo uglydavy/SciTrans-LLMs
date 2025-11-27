@@ -156,7 +156,7 @@ python scripts/run_experiments.py \
 Compare with external systems:
 
 ```python
-from scitrans_next.eval.baselines import (
+from scitrans_llms.eval.baselines import (
     NaiveLLMBaseline,
     GoogleTranslateBaseline,
     PDFMathTranslateBaseline,
@@ -175,12 +175,12 @@ print(comparison.to_latex_table())
 ### Run Custom Experiments
 
 ```python
-from scitrans_next.experiments import (
+from scitrans_llms.experiments import (
     load_corpus,
     ExperimentRunner,
     ExperimentConfig,
 )
-from scitrans_next.experiments.thesis import ThesisExporter
+from scitrans_llms.experiments.thesis import ThesisExporter
 
 # Load corpus
 corpus = load_corpus("corpus/")
@@ -206,7 +206,7 @@ exporter.export_all("thesis_figures/")
 ### Evaluate Specific Outputs
 
 ```python
-from scitrans_next.eval import run_evaluation
+from scitrans_llms.eval import run_evaluation
 
 report = run_evaluation(
     hypotheses=["Ma traduction..."],
@@ -273,7 +273,7 @@ for batch in corpus.documents[::10]:
 ### Missing Dependencies
 
 ```bash
-pip install "scitrans-next[full]"
+pip install "scitrans_llms[full]"
 ```
 
 ## Estimated Time

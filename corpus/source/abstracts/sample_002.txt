@@ -1,6 +1,0 @@
-The attention mechanism has become a fundamental component of modern neural network architectures. Originally introduced for sequence-to-sequence models, attention allows the model to focus on relevant parts of the input when generating each output token.
-
-In this work, we investigate the application of multi-head attention to scientific formula preservation during translation. We propose a masking strategy that protects mathematical expressions from corruption while allowing the surrounding text to be translated with full context awareness.
-
-Our experiments show that the combination of placeholder masking and attention-based translation significantly improves the preservation of equations, with 98% of formulas remaining intact after translation compared to 72% with baseline approaches.
-

@@ -1,5 +1,5 @@
 """
-Core tests for SciTrans-Next.
+Core tests for SciTrans-LLMs.
 
 These tests verify the fundamental components work correctly:
 - Document model creation and serialization
@@ -11,17 +11,17 @@ Run with: pytest tests/test_core.py -v
 """
 
 import pytest
-from scitrans_next.models import Document, Block, Segment, BlockType
-from scitrans_next.masking import (
+from scitrans_llms.models import Document, Block, Segment, BlockType
+from scitrans_llms.masking import (
     MaskRegistry, MaskConfig, mask_text, unmask_text,
     mask_document, unmask_document, validate_placeholders
 )
-from scitrans_next.translate.glossary import (
+from scitrans_llms.translate.glossary import (
     Glossary, GlossaryEntry, enforce_glossary, check_glossary_adherence,
     get_default_glossary
 )
-from scitrans_next.translate.base import DummyTranslator, DictionaryTranslator
-from scitrans_next.pipeline import TranslationPipeline, PipelineConfig
+from scitrans_llms.translate.base import DummyTranslator, DictionaryTranslator
+from scitrans_llms.pipeline import TranslationPipeline, PipelineConfig
 
 
 class TestDocumentModel:
@@ -269,7 +269,7 @@ class TestPipeline:
         pipeline = TranslationPipeline(config)
         
         # Need to use echo mode for this test
-        from scitrans_next.translate.base import DummyTranslator
+        from scitrans_llms.translate.base import DummyTranslator
         pipeline.translator = DummyTranslator(mode="echo")
         
         result = pipeline.translate(doc)
@@ -308,7 +308,7 @@ class TestPipeline:
     
     def test_translate_text_convenience(self):
         """Convenience function works correctly."""
-        from scitrans_next.pipeline import translate_text
+        from scitrans_llms.pipeline import translate_text
         
         result = translate_text("Hello", backend="dummy")
         

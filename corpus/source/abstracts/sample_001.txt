@@ -1,6 +1,0 @@
-Deep learning has revolutionized the field of natural language processing, enabling unprecedented advances in machine translation, text generation, and language understanding. This paper presents a comprehensive survey of transformer-based architectures and their applications to scientific document translation.
-
-We introduce a novel approach that combines terminology-aware prompting with document-level context modeling. Our method leverages bilingual glossaries to enforce consistent translation of domain-specific terms while maintaining coherence across paragraph boundaries through a sliding context window mechanism.
-
-Experimental results on the WMT scientific translation benchmark demonstrate that our approach outperforms existing methods by 2.3 BLEU points while achieving 95% glossary adherence. We also present ablation studies showing the contribution of each component to overall translation quality.
-

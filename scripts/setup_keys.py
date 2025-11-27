@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interactive API key setup for SciTrans-Next.
+Interactive API key setup for SciTrans-LLMs.
 
 This script helps you configure API keys for LLM backends.
 
@@ -28,7 +28,7 @@ console = Console()
 
 def list_keys():
     """List all configured API keys."""
-    from scitrans_next.keys import KeyManager
+    from scitrans_llms.keys import KeyManager
     
     km = KeyManager()
     keys = km.list_keys()
@@ -55,7 +55,7 @@ def list_keys():
 
 def set_key(service: str):
     """Set API key for a service."""
-    from scitrans_next.keys import KeyManager, SERVICES
+    from scitrans_llms.keys import KeyManager, SERVICES
     
     km = KeyManager()
     
@@ -83,7 +83,7 @@ def set_key(service: str):
 
 def delete_key(service: str):
     """Delete API key for a service."""
-    from scitrans_next.keys import KeyManager
+    from scitrans_llms.keys import KeyManager
     
     km = KeyManager()
     
@@ -99,14 +99,14 @@ def delete_key(service: str):
 
 def interactive_setup():
     """Interactive setup wizard."""
-    from scitrans_next.keys import SERVICES
+    from scitrans_llms.keys import SERVICES
     
-    console.print("\n[bold]SciTrans-Next API Key Setup[/]")
+    console.print("\n[bold]SciTrans-LLMs API Key Setup[/]")
     console.print("=" * 40)
     console.print("\nThis wizard will help you configure API keys for translation backends.\n")
     
     for service in SERVICES:
-        from scitrans_next.keys import KeyManager
+        from scitrans_llms.keys import KeyManager
         km = KeyManager()
         info = km.get_key_info(service)
         
@@ -123,7 +123,7 @@ def interactive_setup():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Configure API keys for SciTrans-Next")
+    parser = argparse.ArgumentParser(description="Configure API keys for SciTrans-LLMs")
     parser.add_argument("--list", "-l", action="store_true",
                        help="List all configured keys")
     parser.add_argument("--service", "-s", type=str,
