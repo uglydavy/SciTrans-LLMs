@@ -9,10 +9,10 @@ This guide walks you through all the steps needed to run experiments and generat
 source .venv/bin/activate
 
 # 2. Quick test to verify everything works
-python scripts/quick_test.py
+python3 scripts/quick_test.py
 
 # 3. Run experiments (with dummy translator for now)
-python scripts/run_experiments.py --quick
+python3 scripts/run_experiments.py --quick
 ```
 
 ## Step-by-Step Guide
@@ -23,14 +23,14 @@ For real LLM translation, you need API keys:
 
 ```bash
 # Interactive setup
-python scripts/setup_keys.py
+python3 scripts/setup_keys.py
 
 # Or set individual keys
-python scripts/setup_keys.py --service openai
-python scripts/setup_keys.py --service deepseek
+python3 scripts/setup_keys.py --service openai
+python3 scripts/setup_keys.py --service deepseek
 
 # Check configured keys
-python scripts/setup_keys.py --list
+python3 scripts/setup_keys.py --list
 ```
 
 **Environment Variables** (alternative):
@@ -74,29 +74,29 @@ corpus/
 
 #### A. Quick Test (Dummy Translator)
 ```bash
-python scripts/run_experiments.py --quick
+python3 scripts/run_experiments.py --quick
 ```
 
 #### B. Full Ablation Study
 ```bash
-python scripts/run_experiments.py --backend dummy
+python3 scripts/run_experiments.py --backend dummy
 ```
 
 #### C. With Real LLM Backend
 ```bash
 # OpenAI GPT-4
-python scripts/run_experiments.py --backend openai
+python3 scripts/run_experiments.py --backend openai
 
 # DeepSeek
-python scripts/run_experiments.py --backend deepseek
+python3 scripts/run_experiments.py --backend deepseek
 
 # Compare multiple backends
-python scripts/run_experiments.py --compare-backends dummy dictionary openai
+python3 scripts/run_experiments.py --compare-backends dummy dictionary openai
 ```
 
 #### D. Custom Corpus
 ```bash
-python scripts/run_experiments.py --corpus /path/to/your/corpus
+python3 scripts/run_experiments.py --corpus /path/to/your/corpus
 ```
 
 ### Step 4: Review Results
@@ -147,7 +147,7 @@ Tests contribution of each component:
 Compare different translation engines:
 
 ```bash
-python scripts/run_experiments.py \
+python3 scripts/run_experiments.py \
     --compare-backends dummy dictionary openai deepseek
 ```
 

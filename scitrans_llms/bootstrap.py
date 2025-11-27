@@ -1,3 +1,28 @@
+"""
+Bootstrap and initialization utilities for SciTrans-LLMs.
+
+This module handles the automatic setup and initialization of required
+resources for the translation system, including:
+
+1. YOLO layout detection models
+2. Default terminology glossaries
+3. Data directory structure
+
+Functions are designed to gracefully handle missing dependencies and
+network issues, allowing the system to run with reduced functionality
+when resources are unavailable.
+
+Functions:
+    ensure_layout_model: Download or verify YOLO model
+    ensure_default_glossary: Create or verify glossary
+    download_layout_model: Download YOLO weights from URL
+    run_all: Run all setup steps
+
+Example:
+    >>> from scitrans_llms.bootstrap import run_all
+    >>> run_all()  # Ensures all resources are available
+    ✔ Setup complete. You can now translate.
+"""
 
 from __future__ import annotations
 import csv

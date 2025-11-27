@@ -472,5 +472,160 @@ def info():
         console.print("  [yellow]✗[/] SacreBLEU not installed (pip install sacrebleu)")
 
 
+@app.command()
+def keys(
+    action: str = typer.Argument(..., help="Action: list, set, get, delete, status, export"),
+    service: Optional[str] = typer.Argument(None, help="Service name (openai, deepseek, anthropic, etc.)"),
+):
+    """Manage API keys securely.
+    
+    Examples:
+        scitrans keys list              # List all keys
+        scitrans keys set openai        # Set OpenAI key
+        scitrans keys status openai     # Check OpenAI key status
+        scitrans keys delete openai     # Delete OpenAI key
+        scitrans keys export            # Export keys as env vars
+    """
+    from scitrans_llms.keys import KeyManager, SERVICES
+    
+    km = KeyManager()
+    
+    if action == "list":
+        keys_info = km.list_keys()
+        
+        if not keys_info:
+            console.print("[yellow]No API keys configured.[/]")
+            console.print("\nTo set a key, run: [cyan]scitrans keys set <service>[/]")
+            return
+        
+        table = Table(title="API Keys Status")
+        table.add_column("Service", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Source", style="yellow")
+        table.add_column("Value", style="dim")
+        
+        for key_info in keys_info:
+            status = "✓ Set" if key_info.is_set else "✗ Not set"
+            status_color = "green" if key_info.is_set else "red"
+            table.add_row(
+                key_info.service,
+                f"[{status_color}]{status}[/]",
+                key_info.source,
+                key_info.masked_value if key_info.is_set else "-",
+            )
+        
+        console.print(table)
+        console.print("\n[dim]Priority: env > keychain > config file[/]")
+    
+    elif action == "set":
+        if not service:
+            console.print("[red]Error:[/] Service name required")
+            console.print("Usage: [cyan]scitrans keys set <service>[/]")
+            console.print(f"Available services: {', '.join(SERVICES.keys())}")
+            raise typer.Exit(1)
+        
+        # Prompt for key
+        from getpass import getpass
+        key = getpass(f"Enter API key for {service}: ")
+        
+        if not key:
+            console.print("[red]Error:[/] Key cannot be empty")
+            raise typer.Exit(1)
+        
+        storage = km.set_key(service, key)
+        console.print(f"[green]✓[/] API key for {service} saved to {storage}")
+        
+        if storage == "config":
+            console.print("[yellow]Note:[/] Key stored in local file (~/.scitrans/keys.json)")
+            console.print("       For better security, use environment variables")
+    
+    elif action == "get":
+        if not service:
+            console.print("[red]Error:[/] Service name required")
+            raise typer.Exit(1)
+        
+        key = km.get_key(service)
+        if key:
+            console.print(f"[green]✓[/] Key found: {km._mask_key(key)}")
+        else:
+            console.print(f"[red]✗[/] No key found for {service}")
+            console.print(f"Set with: [cyan]scitrans keys set {service}[/]")
+    
+    elif action == "status":
+        if not service:
+            console.print("[red]Error:[/] Service name required")
+            raise typer.Exit(1)
+        
+        key_info = km.get_key_info(service)
+        
+        if key_info.is_set:
+            console.print(f"[green]✓[/] API key for {service} is set")
+            console.print(f"    Source: {key_info.source}")
+            console.print(f"    Value: {key_info.masked_value}")
+        else:
+            console.print(f"[red]✗[/] No API key found for {service}")
+            env_var = SERVICES.get(service, f"{service.upper()}_API_KEY")
+            console.print(f"\nTo set the key:")
+            console.print(f"  Option 1: [cyan]scitrans keys set {service}[/]")
+            console.print(f"  Option 2: [cyan]export {env_var}='your-key-here'[/]")
+    
+    elif action == "delete":
+        if not service:
+            console.print("[red]Error:[/] Service name required")
+            raise typer.Exit(1)
+        
+        deleted = km.delete_key(service)
+        if deleted:
+            console.print(f"[green]✓[/] API key for {service} deleted")
+        else:
+            console.print(f"[yellow]⚠[/] No key found to delete for {service}")
+    
+    elif action == "export":
+        env_vars = km.export_to_env()
+        
+        if not env_vars:
+            console.print("[yellow]No keys to export.[/]")
+            return
+        
+        console.print("[bold]Export these to your environment:[/]\n")
+        for var, value in env_vars.items():
+            console.print(f"export {var}='{value}'")
+        
+        console.print("\n[dim]Or add to your ~/.bashrc or ~/.zshrc[/]")
+    
+    else:
+        console.print(f"[red]Error:[/] Unknown action '{action}'")
+        console.print("Available actions: list, set, get, delete, status, export")
+        raise typer.Exit(1)
+
+
+@app.command()
+def gui(
+    port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
+    share: bool = typer.Option(False, "--share", "-s", help="Create public shareable link"),
+):
+    """Launch the interactive web GUI.
+    
+    Opens a browser window with the Gradio interface for easy document translation.
+    """
+    try:
+        from scitrans_llms.gui import launch
+        
+        console.print("[bold]🚀 Starting SciTrans-LLMs GUI...[/]\n")
+        console.print(f"[dim]Server will run on port {port}[/]")
+        if share:
+            console.print("[dim]Public sharing enabled[/]")
+        
+        launch()
+    except ImportError as e:
+        console.print("[red]Error:[/] GUI dependencies not installed")
+        console.print("Install with: [cyan]pip install -e \".[full]\"[/]")
+        console.print("Or just Gradio: [cyan]pip install gradio>=4.0.0[/]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error launching GUI:[/] {e}")
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()

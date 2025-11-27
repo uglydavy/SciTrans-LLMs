@@ -20,19 +20,19 @@ This guide walks you through running all experiments needed for your thesis.
 
 ### Option A: Use Sample Data (Quick Testing)
 ```bash
-python scripts/collect_corpus.py --source sample --target 50
+python3 scripts/collect_corpus.py --source sample --target 50
 ```
 
 ### Option B: Download Real Data (Recommended)
 ```bash
 # Interactive mode - choose sources
-python scripts/collect_corpus.py --target 100
+python3 scripts/collect_corpus.py --target 100
 
 # OPUS Scientific articles
-python scripts/collect_corpus.py --source opus_scielo --target 100
+python3 scripts/collect_corpus.py --source opus_scielo --target 100
 
 # Filter for scientific content only
-python scripts/collect_corpus.py --source opus_emea --scientific-only --target 100
+python3 scripts/collect_corpus.py --source opus_emea --scientific-only --target 100
 ```
 
 ### Option C: Use Your Own Data
@@ -59,7 +59,7 @@ corpus/
 
 ### Interactive Setup
 ```bash
-python scripts/setup_keys.py
+python3 scripts/setup_keys.py
 ```
 
 ### Manual Setup
@@ -71,7 +71,7 @@ export OPENAI_API_KEY="sk-..."
 export DEEPSEEK_API_KEY="sk-..."
 
 # Check configuration
-python scripts/setup_keys.py --list
+python3 scripts/setup_keys.py --list
 ```
 
 ### API Key Sources
@@ -85,31 +85,31 @@ python scripts/setup_keys.py --list
 
 ### Quick Test (No API Needed)
 ```bash
-python scripts/quick_test.py
+python3 scripts/quick_test.py
 ```
 
 ### Full Thesis Pipeline
 ```bash
 # With sample data + dummy translator (free, for testing)
-python scripts/full_pipeline.py
+python3 scripts/full_pipeline.py
 
 # With OpenAI (recommended for thesis)
-python scripts/full_pipeline.py --backend openai
+python3 scripts/full_pipeline.py --backend openai
 
 # With DeepSeek (cheaper alternative)
-python scripts/full_pipeline.py --backend deepseek
+python3 scripts/full_pipeline.py --backend deepseek
 ```
 
 ### Custom Experiments
 ```bash
 # Only ablation study
-python scripts/full_pipeline.py --skip-baselines
+python3 scripts/full_pipeline.py --skip-baselines
 
 # Custom corpus path
-python scripts/full_pipeline.py --corpus /path/to/your/corpus
+python3 scripts/full_pipeline.py --corpus /path/to/your/corpus
 
 # Compare multiple backends
-python scripts/run_experiments.py --compare-backends dummy dictionary openai
+python3 scripts/run_experiments.py --compare-backends dummy dictionary openai
 ```
 
 ## Step 4: Review Results
@@ -185,46 +185,46 @@ source .venv/bin/activate
 pip install -e ".[full]"
 
 # Verify installation
-python scripts/quick_test.py
+python3 scripts/quick_test.py
 
 # ═══════════════════════════════════════════════════════════
 # CORPUS
 # ═══════════════════════════════════════════════════════════
 
 # Create sample corpus
-python scripts/collect_corpus.py --source sample --target 50
+python3 scripts/collect_corpus.py --source sample --target 50
 
 # Download from OPUS
-python scripts/collect_corpus.py --source opus_scielo --target 100
+python3 scripts/collect_corpus.py --source opus_scielo --target 100
 
 # ═══════════════════════════════════════════════════════════
 # API KEYS
 # ═══════════════════════════════════════════════════════════
 
 # Interactive setup
-python scripts/setup_keys.py
+python3 scripts/setup_keys.py
 
 # Set specific key
-python scripts/setup_keys.py --service openai
+python3 scripts/setup_keys.py --service openai
 
 # List configured keys
-python scripts/setup_keys.py --list
+python3 scripts/setup_keys.py --list
 
 # ═══════════════════════════════════════════════════════════
 # EXPERIMENTS
 # ═══════════════════════════════════════════════════════════
 
 # Full pipeline (dummy backend, for testing)
-python scripts/full_pipeline.py
+python3 scripts/full_pipeline.py
 
 # Full pipeline with OpenAI
-python scripts/full_pipeline.py --backend openai
+python3 scripts/full_pipeline.py --backend openai
 
 # Only main experiments (skip ablation)
-python scripts/full_pipeline.py --skip-ablation
+python3 scripts/full_pipeline.py --skip-ablation
 
 # Custom experiment
-python scripts/run_experiments.py --backend openai --corpus my_corpus/
+python3 scripts/run_experiments.py --backend openai --corpus my_corpus/
 
 # ═══════════════════════════════════════════════════════════
 # RESULTS
@@ -241,14 +241,14 @@ cat results/thesis/*.tex
 
 ### "API key not found"
 ```bash
-python scripts/setup_keys.py --service openai
+python3 scripts/setup_keys.py --service openai
 # Or set environment variable:
 export OPENAI_API_KEY="sk-..."
 ```
 
 ### "Corpus not found"
 ```bash
-python scripts/collect_corpus.py --source sample --target 30
+python3 scripts/collect_corpus.py --source sample --target 30
 ```
 
 ### "Low BLEU scores"
