@@ -93,7 +93,7 @@ _BUILTIN_GLOSSARY: Tuple[Tuple[str, str], ...] = (
 
 DEFAULT_LAYOUT_URL = "https://huggingface.co/airaria/DocLayout-YOLO/resolve/main/weights/doclaynet_yolov8_base.pt"
 
-_PLACEHOLDER_BYTES = b"SciTrans-LM placeholder weights. Run 'python3 -m scitrans_lm setup --yolo' to download/train.".ljust(
+_PLACEHOLDER_BYTES = b"SciTrans-LM placeholder weights. Run 'python3 -m scitrans_llms setup --yolo' to download/train.".ljust(
     1024, b"\0"
 )
 

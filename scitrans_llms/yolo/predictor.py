@@ -28,7 +28,7 @@ class LayoutPredictor:
     def _load(self):
         if not self.model_path.exists():
             raise FileNotFoundError(
-                f"Layout model not found at {self.model_path}. Run 'python3 -m scitrans_lm setup --yolo'."
+                f"Layout model not found at {self.model_path}. Run 'python3 -m scitrans_llms setup --yolo'."
             )
         try:
             if self.model_path.stat().st_size <= 1024:

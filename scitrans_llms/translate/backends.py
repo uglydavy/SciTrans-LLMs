@@ -159,7 +159,7 @@ class _OpenAICompatTranslator(BaseTranslator):
         if self._client is None:
             if not self.api_key:
                 raise RuntimeError(
-                    f"API key missing for {self.model}. Run: python3 -m scitrans_lm set-key {self.model.split('-')[0]}"
+                    f"API key missing for {self.model}. Run: scitrans keys set {self.model.split('-')[0]}"
                 )
             try:
                 from openai import OpenAI
@@ -219,7 +219,7 @@ class DeepLTranslator(BaseTranslator):
                 self._client = deepl.Translator(self.api_key)
             except Exception as e:
                 raise RuntimeError(
-                    "deepl SDK not installed or API key missing. Run: pip install deepl && python3 -m scitrans_lm set-key deepl"
+                    "deepl SDK not installed or API key missing. Run: pip install deepl && scitrans keys set deepl"
                 ) from e
 
     def translate(self, texts, src, tgt, prompt: str = "", glossary=None, context: Optional[TranslationMemory] = None):

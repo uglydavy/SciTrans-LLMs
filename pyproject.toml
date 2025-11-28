@@ -79,7 +79,7 @@ scitrans = "scitrans_llms.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["scitrans_llms*"]
+include = ["scitrans_llms*", "scitrans_lm*"]
 
 [tool.setuptools.package-data]
 scitrans_llms = ["data/**/*"]

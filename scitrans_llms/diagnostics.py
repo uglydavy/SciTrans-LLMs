@@ -86,7 +86,7 @@ def _check_keys() -> CheckResult:
         return CheckResult(
             "API keys",
             "warn",
-            "Missing: " + ", ".join(missing) + "; store with 'python -m scitrans_lm set-key <service>'.",
+            "Missing: " + ", ".join(missing) + "; store with 'scitrans keys set <service>'.",
         )
     return CheckResult("API keys", "ok", "Found stored keys or environment variables")
 
