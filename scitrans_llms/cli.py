@@ -473,16 +473,12 @@ def info():
     except Exception:
         table.add_row("ollama", "✗ Not running", "Start with: ollama serve")
     
-    # Check Google Free
+    # Check Google Free (uses deep-translator)
     try:
-        import importlib.util
-        spec = importlib.util.find_spec("googletrans")
-        if spec is not None:
-            table.add_row("googlefree", "⚠ Installed (may have issues)", "googletrans has httpcore conflicts")
-        else:
-            table.add_row("googlefree", "✗ Not installed", "pip install googletrans==4.0.0rc1")
-    except Exception:
-        table.add_row("googlefree", "✗ Not installed", "pip install googletrans==4.0.0rc1")
+        from deep_translator import GoogleTranslator as _GT
+        table.add_row("googlefree", "✓ Available", "Uses deep-translator (no API key)")
+    except ImportError:
+        table.add_row("googlefree", "✗ Not installed", "pip install deep-translator")
     
     # Check DeepSeek
     has_ds_key = km.get_key("deepseek") is not None

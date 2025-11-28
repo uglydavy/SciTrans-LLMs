@@ -4,7 +4,7 @@ Free API translation backends for testing without API balance.
 This module provides:
 - Hugging Face Inference API (free tier available)
 - Ollama (local, completely free)
-- Google Translate Free API (via googletrans)
+- Google Translate Free API (via deep-translator)
 """
 
 from __future__ import annotations
@@ -223,12 +223,12 @@ Translation:"""
 
 
 class GoogleFreeTranslator(Translator):
-    """Google Translate Free API (via googletrans library).
+    """Google Translate Free API (via deep-translator library).
     
-    This uses the unofficial googletrans library which is free but:
-    - May have rate limits
-    - Not officially supported by Google
-    - May break if Google changes their API
+    This uses the deep-translator library which is free and stable:
+    - No API key required
+    - Works reliably with Google Translate
+    - No httpcore conflicts
     
     Usage:
         translator = GoogleFreeTranslator()
@@ -237,11 +237,11 @@ class GoogleFreeTranslator(Translator):
     
     def __init__(self):
         try:
-            from googletrans import Translator as GoogleTrans
-            self._translator = GoogleTrans()
+            from deep_translator import GoogleTranslator
+            self._translator_cls = GoogleTranslator
         except ImportError:
             raise ImportError(
-                "googletrans required. Install with: pip install googletrans==4.0.0rc1"
+                "deep-translator required. Install with: pip install deep-translator"
             )
     
     @property
@@ -254,23 +254,21 @@ class GoogleFreeTranslator(Translator):
         context: Optional[TranslationContext] = None,
         num_candidates: int = 1,
     ) -> TranslationResult:
-        """Translate using Google Translate Free API."""
+        """Translate using Google Translate Free API via deep-translator."""
         source_lang = context.source_lang if context else "en"
         target_lang = context.target_lang if context else "fr"
         
         try:
-            result = self._translator.translate(
-                text,
-                src=source_lang,
-                dest=target_lang,
-            )
+            # Create translator instance for this language pair
+            translator = self._translator_cls(source=source_lang, target=target_lang)
+            translated_text = translator.translate(text)
             
             return TranslationResult(
-                text=result.text,
+                text=translated_text,
                 source_text=text,
                 metadata={
                     "translator": self.name,
-                    "api_used": "googletrans",
+                    "api_used": "deep-translator",
                 },
             )
         except Exception as e:
