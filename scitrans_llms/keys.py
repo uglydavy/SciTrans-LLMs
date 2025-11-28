@@ -31,6 +31,8 @@ SERVICES = {
     "deepl": "DEEPL_API_KEY",
     "google": "GOOGLE_API_KEY",
     "comet": "COMET_API_KEY",
+    "huggingface": "HUGGINGFACE_API_KEY",
+    "ollama": "OLLAMA_HOST",  # Not really a key, but tracks if custom host is set
 }
 
 

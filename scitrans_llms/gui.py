@@ -1,3 +1,17 @@
+"""
+Gradio-based web GUI for SciTrans-LLMs.
+
+This module provides an interactive web interface for:
+- PDF translation with layout preservation
+- Layout analysis and debugging
+- Pipeline experimentation (masking, reranking, BLEU scoring)
+- System diagnostics
+
+Usage:
+    scitrans gui
+    scitrans gui --port 7860 --share
+"""
+
 from __future__ import annotations
 import os
 import shutil
@@ -7,15 +21,62 @@ from collections import Counter
 from pathlib import Path
 from textwrap import shorten
 
-import fitz
-import requests
-import huggingface_hub as hfh
+# Lazy imports - these are loaded when launch() is called
+fitz = None
+requests = None
+hfh = None
+gr = None
+grc_utils = None
+
+
+def _check_dependencies():
+    """Check and import all required dependencies."""
+    global fitz, requests, hfh, gr, grc_utils
+    
+    errors = []
+    
+    try:
+        import fitz as _fitz
+        fitz = _fitz
+    except ImportError:
+        errors.append("PyMuPDF not installed. Install with: pip install PyMuPDF")
+    
+    try:
+        import requests as _requests
+        requests = _requests
+    except ImportError:
+        errors.append("requests not installed. Install with: pip install requests")
+    
+    try:
+        import huggingface_hub as _hfh
+        hfh = _hfh
+        _ensure_hf_folder()
+    except ImportError:
+        # huggingface_hub is optional
+        pass
+    
+    try:
+        import gradio as _gr
+        gr = _gr
+    except ImportError:
+        errors.append("Gradio not installed. Install with: pip install 'gradio>=4.0.0'")
+    
+    try:
+        import gradio_client.utils as _grc_utils
+        grc_utils = _grc_utils
+    except ImportError:
+        # gradio_client should come with gradio
+        pass
+    
+    if errors:
+        raise ImportError("\n".join(errors))
 
 
 def _ensure_hf_folder():
     """Backport huggingface_hub.HfFolder for versions where it was removed."""
-
-    if hasattr(hfh, "HfFolder"):
+    global hfh
+    
+    if hfh is None or hasattr(hfh, "HfFolder"):
         return
 
     class _HfFolder:
@@ -39,22 +100,6 @@ def _ensure_hf_folder():
     hfh.HfFolder = _HfFolder
 
 
-_ensure_hf_folder()
-import gradio as gr
-import gradio_client.utils as grc_utils
-
-from .ingest.analyzer import analyze_document
-from .pipeline import translate_document, _collect_layout_detections
-from .bootstrap import ensure_layout_model, ensure_default_glossary
-from .config import GLOSSARY_DIR
-from .mask import mask_protected_segments, unmask
-from .refine.rerank import rerank_candidates
-from .refine.scoring import bleu
-from .translate.glossary import merge_glossaries
-from .diagnostics import collect_diagnostics, summarize_checks
-from .utils import parse_page_range
-
-
 def _patch_gradio_json_schema():
     """Work around gradio_client assuming JSON Schema objects are dicts.
 
@@ -63,7 +108,14 @@ def _patch_gradio_json_schema():
     when they try to iterate over the boolean. We coerce those booleans to
     permissive ``any``/""never"" strings so API schema generation succeeds.
     """
-
+    global grc_utils
+    
+    if grc_utils is None:
+        return  # gradio_client not available, skip patching
+    
+    if not hasattr(grc_utils, 'get_type'):
+        return  # Already patched or different version
+    
     original_get_type = grc_utils.get_type
 
     def safe_get_type(schema):  # type: ignore[override]
@@ -75,6 +127,22 @@ def _patch_gradio_json_schema():
 
 
 def launch():
+    """Launch the Gradio web interface."""
+    # Check and import dependencies first
+    _check_dependencies()
+    
+    # Import internal modules (deferred to avoid import errors)
+    from .ingest.analyzer import analyze_document
+    from .pipeline import translate_document, _collect_layout_detections
+    from .bootstrap import ensure_layout_model, ensure_default_glossary
+    from .config import GLOSSARY_DIR
+    from .mask import mask_protected_segments, unmask
+    from .refine.rerank import rerank_candidates
+    from .refine.scoring import bleu
+    from .translate.glossary import merge_glossaries
+    from .diagnostics import collect_diagnostics, summarize_checks
+    from .utils import parse_page_range
+    
     _patch_gradio_json_schema()
     ensure_layout_model()
     ensure_default_glossary()
