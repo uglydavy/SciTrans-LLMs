@@ -60,3 +60,4 @@ echo "3. Sign up for DeepSeek at https://platform.deepseek.com (get $5 free)"
 echo "4. Read QUICK_START.md and SUMMARY_OF_IMPROVEMENTS.md"
 echo ""
 
+
