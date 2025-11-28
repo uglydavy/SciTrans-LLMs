@@ -82,15 +82,15 @@ def launch(port: int = 7860, share: bool = False):
             ("free", "Free (Lingva/LibreTranslate)", True),
             ("dictionary", "Dictionary Only", True),
         ]
-    if km.get_key("openai"):
+        if km.get_key("openai"):
             backends.append(("openai", "OpenAI GPT-4", True))
         else:
             backends.append(("openai", "OpenAI GPT-4 (no key)", False))
-    if km.get_key("deepseek"):
+        if km.get_key("deepseek"):
             backends.append(("deepseek", "DeepSeek (cheap)", True))
         else:
             backends.append(("deepseek", "DeepSeek (no key)", False))
-    if km.get_key("anthropic"):
+        if km.get_key("anthropic"):
             backends.append(("anthropic", "Claude", True))
         else:
             backends.append(("anthropic", "Claude (no key)", False))
