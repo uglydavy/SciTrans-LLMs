@@ -173,7 +173,7 @@ If you get "command not found":
 
 ```bash
 # Use module form instead
-python3 -m scitrans_llms.cli --version
+python3 -m scitrans_llms --version
 ```
 
 ### Run System Info Check
@@ -311,7 +311,7 @@ pip install -e .
 **Solution:**
 ```bash
 # Use module form
-python3 -m scitrans_llms.cli --help
+python3 -m scitrans_llms --help
 
 # Or add to PATH
 export PATH="$PATH:$(pwd)/.venv/bin"
