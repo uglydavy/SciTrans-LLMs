@@ -694,7 +694,7 @@ def gui(
         if share:
             console.print("[dim]Public sharing enabled[/]")
         
-        launch()
+        launch(port=port, share=share)
     except ImportError as e:
         console.print(f"[red]Error:[/] Failed to import GUI module: {e}")
         import traceback

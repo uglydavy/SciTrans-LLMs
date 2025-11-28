@@ -163,8 +163,9 @@ def ensure_layout_model(prefer_download: bool = True, model_url: str | None = No
     if not LAYOUT_MODEL.exists():
         LAYOUT_MODEL.write_bytes(_PLACEHOLDER_BYTES)
     warnings.warn(
-        "Using placeholder layout weights. Run 'python3 -m scitrans_lm setup --yolo' "
-        "with internet access or place a DocLayout-YOLO checkpoint at data/layout/layout_model.pt.",
+        "Using placeholder layout weights. The layout detection model is optional - "
+        "translation will still work without it. To enable advanced layout detection, "
+        "download a DocLayout-YOLO checkpoint to data/layout/layout_model.pt.",
         RuntimeWarning,
     )
 
