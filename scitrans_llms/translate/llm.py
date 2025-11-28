@@ -469,6 +469,93 @@ class MultiTurnTranslator(BaseLLMTranslator):
         return result
 
 
+class PerplexityTranslator(BaseLLMTranslator):
+    """Perplexity API translator.
+    
+    Uses Perplexity's chat API which is OpenAI-compatible.
+    """
+    
+    DEFAULT_BASE_URL = "https://api.perplexity.ai"
+    
+    def __init__(
+        self,
+        config: Optional[LLMConfig] = None,
+        api_key: Optional[str] = None,
+    ):
+        config = config or LLMConfig(model="llama-3.1-sonar-small-128k-online")
+        super().__init__(config)
+        self.api_key = api_key or self.config.api_key or os.getenv("PERPLEXITY_API_KEY")
+        self._client = None
+    
+    @property
+    def name(self) -> str:
+        return f"perplexity-{self.config.model}"
+    
+    def _get_client(self):
+        """Lazy initialization using OpenAI-compatible client."""
+        if self._client is None:
+            try:
+                from openai import OpenAI
+            except ImportError:
+                raise ImportError(
+                    "OpenAI library required for Perplexity. Install with: pip install openai"
+                )
+            
+            if not self.api_key:
+                raise ValueError(
+                    "Perplexity API key required. Set PERPLEXITY_API_KEY environment variable "
+                    "or pass api_key parameter."
+                )
+            
+            self._client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.config.base_url or self.DEFAULT_BASE_URL,
+            )
+        
+        return self._client
+    
+    def translate(
+        self,
+        text: str,
+        context: Optional[TranslationContext] = None,
+        num_candidates: int = 1,
+    ) -> TranslationResult:
+        """Translate text using Perplexity API."""
+        client = self._get_client()
+        
+        system_prompt = self.build_system_prompt(context)
+        user_prompt = self.build_user_prompt(text)
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        
+        try:
+            response = client.chat.completions.create(
+                model=self.config.model,
+                messages=messages,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+            )
+            
+            translated = self.parse_response(
+                response.choices[0].message.content or ""
+            )
+            
+        except Exception as e:
+            raise RuntimeError(f"Perplexity translation failed: {e}")
+        
+        return TranslationResult(
+            text=translated,
+            source_text=text,
+            metadata={
+                "translator": self.name,
+                "model": self.config.model,
+            },
+        )
+
+
 # Factory function to create LLM translators
 def create_llm_translator(
     backend: str,
@@ -478,7 +565,7 @@ def create_llm_translator(
     """Create an LLM translator by backend name.
     
     Args:
-        backend: Backend name ('openai', 'deepseek', 'anthropic', etc.)
+        backend: Backend name ('openai', 'deepseek', 'anthropic', 'perplexity', etc.)
         config: Optional LLM configuration
         api_key: Optional API key (overrides config and env)
         
@@ -495,6 +582,9 @@ def create_llm_translator(
     
     elif backend_lower in ("anthropic", "claude"):
         return AnthropicTranslator(config, api_key)
+    
+    elif backend_lower in ("perplexity",):
+        return PerplexityTranslator(config, api_key)
     
     else:
         raise ValueError(f"Unknown LLM backend: {backend}")

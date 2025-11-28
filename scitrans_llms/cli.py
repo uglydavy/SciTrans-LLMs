@@ -82,7 +82,7 @@ def translate(
     ),
     backend: str = typer.Option(
         "dummy", "--backend", "-b",
-        help="Translation backend (dummy, dictionary, openai, deepseek, anthropic)",
+        help="Translation backend (dummy, dictionary, free, mymemory, lingva, openai, deepseek, anthropic)",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
@@ -453,6 +453,15 @@ def info():
     except ImportError:
         table.add_row("anthropic", "✗ Not installed", "pip install anthropic")
     
+    # Free online backends (no API key needed)
+    try:
+        import requests
+        table.add_row("free", "✓ Available", "Auto-fallback (Lingva/MyMemory)")
+        table.add_row("mymemory", "✓ Available", "Free translation memory")
+        table.add_row("lingva", "✓ Available", "Google Translate frontend")
+    except ImportError:
+        table.add_row("free", "✗ requests missing", "pip install requests")
+    
     console.print(table)
     
     # Check PDF support
@@ -627,5 +636,10 @@ def gui(
         raise typer.Exit(1)
 
 
-if __name__ == "__main__":
+def cli_main():
+    """Entry point for console_scripts."""
     app()
+
+
+if __name__ == "__main__":
+    cli_main()

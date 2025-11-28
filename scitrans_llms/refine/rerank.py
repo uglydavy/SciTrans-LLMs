@@ -300,6 +300,62 @@ class CandidateReranker:
             pass
 
 
+@dataclass
+class RerankedCandidate:
+    """Simple result for rerank_candidates function."""
+    text: str
+    score: float
+    detail: dict = field(default_factory=dict)
+
+
+def rerank_candidates(
+    source_text: str,
+    candidates: list[str],
+    glossary: Optional[Glossary] = None,
+) -> RerankedCandidate:
+    """Convenience function to rerank candidates.
+    
+    This is a simpler API for the GUI.
+    
+    Args:
+        source_text: Original source text
+        candidates: List of translation candidates
+        glossary: Optional glossary for terminology checking
+        
+    Returns:
+        RerankedCandidate with the best translation
+    """
+    if not candidates:
+        return RerankedCandidate(text="", score=0.0, detail={})
+    
+    if len(candidates) == 1:
+        return RerankedCandidate(
+            text=candidates[0],
+            score=1.0,
+            detail={"single_candidate": True},
+        )
+    
+    reranker = CandidateReranker(use_llm_scoring=False)  # Use fast scoring
+    result = reranker.rerank(
+        source_text=source_text,
+        candidates=candidates,
+        glossary=glossary,
+    )
+    
+    best_idx = result.metadata.get("best_index", 0)
+    best_score = result.scores[best_idx] if result.scores else None
+    
+    return RerankedCandidate(
+        text=result.best_candidate,
+        score=best_score.overall if best_score else 0.0,
+        detail={
+            "fluency": best_score.fluency if best_score else 0.0,
+            "adequacy": best_score.adequacy if best_score else 0.0,
+            "terminology": best_score.terminology if best_score else 0.0,
+        },
+    )
+
+
 class RerankedTranslator(Translator):
     """Translator wrapper that generates and reranks candidates.
     

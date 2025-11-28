@@ -16,6 +16,8 @@ from scitrans_llms.ingest.pdf import (
     PDFParser,
     LayoutDetector,
     HeuristicLayoutDetector,
+    extract_blocks,
+    SimpleBlock,
 )
 
 __all__ = [
@@ -23,4 +25,6 @@ __all__ = [
     "PDFParser",
     "LayoutDetector",
     "HeuristicLayoutDetector",
+    "extract_blocks",
+    "SimpleBlock",
 ]

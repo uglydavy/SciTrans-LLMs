@@ -1,6 +1,6 @@
 """Entry point for running SciTrans-LM as a module."""
-from .cli import app
+from .cli import cli_main
 
 
 if __name__ == "__main__":
-    app()
+    cli_main()

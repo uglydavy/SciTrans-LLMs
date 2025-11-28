@@ -23,7 +23,11 @@ class BaseTranslator:
 
 
 class DictionaryTranslator(BaseTranslator):
-    """Hybrid offline/online translator that aggressively enforces glossaries."""
+    """Hybrid offline/online translator that aggressively enforces glossaries.
+    
+    Now enhanced with automatic loading of large dictionaries from online sources.
+    On first use, it will download 1000+ translations and cache them locally.
+    """
 
     _BASE_LEXICON = {
         "the": "le",
@@ -48,8 +52,44 @@ class DictionaryTranslator(BaseTranslator):
         "references": "références",
     }
 
-    def __init__(self, mapping: Dict[str, str], adaptive: Optional[AdaptiveDictionary] = None):
+    def __init__(
+        self, 
+        mapping: Dict[str, str] = None, 
+        adaptive: Optional[AdaptiveDictionary] = None,
+        load_online: bool = True,
+        cache_dir: Optional[str] = None
+    ):
+        """Initialize dictionary translator.
+        
+        Args:
+            mapping: Custom word mappings (optional)
+            adaptive: Adaptive dictionary for learning (optional)
+            load_online: If True, loads extended dictionary from online sources
+            cache_dir: Directory to cache downloaded dictionaries
+        """
         merged = dict(self._BASE_LEXICON)
+        
+        # Load extended dictionary from online sources (cached)
+        if load_online:
+            try:
+                from scitrans_llms.translate.online_dictionary_sources import (
+                    load_cached_or_fetch_dictionary
+                )
+                from pathlib import Path
+                
+                cache_path = Path(cache_dir) if cache_dir else None
+                online_dict = load_cached_or_fetch_dictionary(
+                    source_lang="en",
+                    target_lang="fr",
+                    cache_dir=cache_path
+                )
+                merged.update(online_dict)
+                print(f"✓ Loaded {len(online_dict)} translations from dictionary")
+            except Exception as e:
+                print(f"⚠ Could not load online dictionary: {e}")
+                print("  Falling back to basic dictionary only")
+        
+        # Add custom mappings
         merged.update({k.lower(): v for k, v in (mapping or {}).items()})
         self.mapping = merged
         self.adaptive = adaptive or AdaptiveDictionary()

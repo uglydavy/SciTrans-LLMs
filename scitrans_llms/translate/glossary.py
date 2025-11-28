@@ -484,3 +484,64 @@ def get_default_glossary() -> Glossary:
         target_lang="fr",
     )
 
+
+def merge_glossaries(
+    *glossaries: Glossary,
+    include_default: bool = True,
+) -> Glossary:
+    """Merge multiple glossaries into one.
+    
+    This is useful for combining user-provided glossaries with
+    the default built-in glossary.
+    
+    Args:
+        *glossaries: Glossaries to merge
+        include_default: Whether to include the default glossary
+        
+    Returns:
+        Merged Glossary with all entries
+    """
+    from pathlib import Path
+    
+    all_entries = []
+    seen_sources = set()
+    
+    # Start with provided glossaries
+    for gloss in glossaries:
+        if gloss:
+            for entry in gloss.entries:
+                if entry.source.lower() not in seen_sources:
+                    all_entries.append(entry)
+                    seen_sources.add(entry.source.lower())
+    
+    # Try to load user glossaries from config directory
+    try:
+        from scitrans_llms.config import GLOSSARY_DIR
+        if GLOSSARY_DIR.exists():
+            for csv_file in GLOSSARY_DIR.glob("*.csv"):
+                try:
+                    user_gloss = load_glossary_csv(csv_file)
+                    for entry in user_gloss.entries:
+                        if entry.source.lower() not in seen_sources:
+                            all_entries.append(entry)
+                            seen_sources.add(entry.source.lower())
+                except Exception:
+                    pass  # Skip invalid files
+    except ImportError:
+        pass  # config module not available
+    
+    # Add default glossary last (user entries take precedence)
+    if include_default:
+        default = get_default_glossary()
+        for entry in default.entries:
+            if entry.source.lower() not in seen_sources:
+                all_entries.append(entry)
+                seen_sources.add(entry.source.lower())
+    
+    return Glossary(
+        entries=all_entries,
+        name="merged",
+        source_lang="en",
+        target_lang="fr",
+    )
+

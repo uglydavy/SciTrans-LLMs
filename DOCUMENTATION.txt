@@ -1,0 +1,21 @@
+SciTrans-LLMs Documentation Structure
+======================================
+
+Essential Documentation Files:
+
+1. README.md - Project overview and quick start
+2. USER_GUIDE.md - Complete usage guide (START HERE!)
+3. INSTALL.md - Installation instructions
+4. EXPERIMENTS.md - Running experiments
+5. THESIS_GUIDE.md - Research documentation
+6. CONTRIBUTING.md - Contributing guidelines
+7. CHANGES.md - Changelog
+
+Quick Reference:
+
+- Want to use the tool? → Read USER_GUIDE.md
+- Installing? → Read INSTALL.md
+- Research/experiments? → Read EXPERIMENTS.md & THESIS_GUIDE.md
+- Contributing? → Read CONTRIBUTING.md
+
+All documentation is now consolidated into these 7 essential files.

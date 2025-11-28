@@ -1,10 +1,21 @@
+"""
+Online translation backends that don't require API keys.
+
+This module provides free translation options:
+1. MyMemory API - Free translation memory (1000 words/day without key)
+2. LibreTranslate - Open-source translation API
+3. Lingva - Alternative Google Translate frontend
+
+These can be used as fallbacks when LLM APIs aren't available.
+"""
+
 from __future__ import annotations
 
 import json
 import re
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 try:
     import requests
@@ -12,6 +23,7 @@ except Exception:  # pragma: no cover - optional dependency
     requests = None
 
 from ..config import CACHE_DIR
+from .base import Translator, TranslationResult, TranslationContext
 
 
 class AdaptiveDictionary:

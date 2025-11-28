@@ -75,7 +75,7 @@ Documentation = "https://github.com/uglydavy/SciTrans-LLMs/blob/main/README.md"
 Repository = "https://github.com/uglydavy/SciTrans-LLMs"
 
 [project.scripts]
-scitrans = "scitrans_llms.cli:main"
+scitrans = "scitrans_llms.cli:cli_main"
 
 [tool.setuptools.packages.find]
 where = ["."]

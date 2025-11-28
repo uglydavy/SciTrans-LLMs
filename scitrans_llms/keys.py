@@ -259,3 +259,17 @@ def require_key(service: str) -> str:
         )
     return key
 
+
+def list_keys() -> dict[str, Optional[str]]:
+    """List all API keys and their values.
+    
+    Returns:
+        Dict mapping service name to key value (or None if not set)
+    """
+    km = KeyManager()
+    result = {}
+    for service in SERVICES.keys():
+        key = km.get_key(service)
+        result[service] = key
+    return result
+
