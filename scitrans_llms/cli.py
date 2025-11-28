@@ -419,7 +419,12 @@ For more information, see https://arxiv.org/abs/1706.03762.
 @app.command()
 def info():
     """Show system information and available backends."""
+    from scitrans_llms.keys import KeyManager
+    
     console.print(f"[bold]SciTrans-LLMs v{__version__}[/]\n")
+    
+    # Initialize key manager to check keys from all sources (env, keyring, config)
+    km = KeyManager()
     
     # Check available backends
     table = Table(title="Available Translation Backends")
@@ -434,8 +439,7 @@ def info():
     # Check OpenAI
     try:
         import openai
-        import os
-        has_key = bool(os.getenv("OPENAI_API_KEY"))
+        has_key = km.get_key("openai") is not None
         table.add_row("openai", "✓ Available" if has_key else "⚠ No API key", "GPT-4, GPT-4o, GPT-5.1")
     except ImportError:
         table.add_row("openai", "✗ Not installed", "pip install openai")
@@ -447,10 +451,9 @@ def info():
     table.add_row("improved-offline", "✓ Available", "Enhanced offline translation")
     
     # Check Hugging Face
-    import os
     try:
         import requests
-        has_hf_key = bool(os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"))
+        has_hf_key = km.get_key("huggingface") is not None
         status = "✓ Available (with key)" if has_hf_key else "✓ Available (free tier)"
         table.add_row("huggingface", status, "Free API, 1000 req/month")
     except ImportError:
@@ -472,8 +475,6 @@ def info():
     
     # Check Google Free
     try:
-        # Don't import googletrans directly - it has httpcore compatibility issues
-        # Just check if the package is installed
         import importlib.util
         spec = importlib.util.find_spec("googletrans")
         if spec is not None:
@@ -484,17 +485,24 @@ def info():
         table.add_row("googlefree", "✗ Not installed", "pip install googletrans==4.0.0rc1")
     
     # Check DeepSeek
-    import os
-    has_ds_key = bool(os.getenv("DEEPSEEK_API_KEY"))
+    has_ds_key = km.get_key("deepseek") is not None
     table.add_row("deepseek", "✓ Available" if has_ds_key else "⚠ No API key", "Uses OpenAI client")
     
     # Check Anthropic
     try:
         import anthropic
-        has_key = bool(os.getenv("ANTHROPIC_API_KEY"))
+        has_key = km.get_key("anthropic") is not None
         table.add_row("anthropic", "✓ Available" if has_key else "⚠ No API key", "Claude 3")
     except ImportError:
         table.add_row("anthropic", "✗ Not installed", "pip install anthropic")
+    
+    # Check DeepL
+    has_deepl_key = km.get_key("deepl") is not None
+    table.add_row("deepl", "✓ Available" if has_deepl_key else "⚠ No API key", "DeepL API (paid)")
+    
+    # Check Google Cloud
+    has_google_key = km.get_key("google") is not None
+    table.add_row("google", "✓ Available" if has_google_key else "⚠ No API key", "Google Cloud Translation")
     
     console.print(table)
     
@@ -651,13 +659,31 @@ def gui(
     
     Opens a browser window with the Gradio interface for easy document translation.
     """
-    # Check for gradio first
+    # Check and show detailed dependency status
+    missing_deps = []
+    
     try:
         import gradio
-    except ImportError:
-        console.print("[red]Error:[/] GUI dependencies not installed")
-        console.print("Install with: [cyan]pip install -e \".[full]\"[/]")
-        console.print("Or just Gradio: [cyan]pip install 'gradio>=4.0.0'[/]")
+    except ImportError as e:
+        missing_deps.append(f"gradio: {e}")
+    
+    try:
+        import fitz
+    except ImportError as e:
+        missing_deps.append(f"PyMuPDF: {e}")
+    
+    try:
+        import requests
+    except ImportError as e:
+        missing_deps.append(f"requests: {e}")
+    
+    if missing_deps:
+        console.print("[red]Error:[/] Missing GUI dependencies:")
+        for dep in missing_deps:
+            console.print(f"  - {dep}")
+        console.print("\n[bold]To fix:[/]")
+        console.print("  [cyan]pip install 'gradio>=4.0.0' PyMuPDF requests[/]")
+        console.print("  [dim]Or install all optional deps:[/] [cyan]pip install -e \".[full]\"[/]")
         raise typer.Exit(1)
     
     try:
@@ -671,10 +697,15 @@ def gui(
         launch()
     except ImportError as e:
         console.print(f"[red]Error:[/] Failed to import GUI module: {e}")
-        console.print("Make sure all dependencies are installed: [cyan]pip install -e \".[full]\"[/]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/]")
+        console.print("\n[bold]To fix:[/]")
+        console.print("  [cyan]pip install 'gradio>=4.0.0' PyMuPDF requests huggingface_hub[/]")
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error launching GUI:[/] {e}")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/]")
         raise typer.Exit(1)
 
 
