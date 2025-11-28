@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scitrans_llms"
-version = "0.1.0"
+version = "0.2.0"
 description = "Adaptive Document Translation Enhanced by Technology based on LLMs - Research-grade layout-preserving PDF translator"
 authors = [{name = "Tchienkoua Franck-Davy"}]
 readme = "README.md"
@@ -35,14 +35,21 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     
-    # PDF processing (will be used in PDF module)
+    # PDF processing
     "PyMuPDF>=1.23.0",
+    
+    # Modern GUI
+    "nicegui>=1.4.0",
+    
+    # Document parsing
+    "python-docx>=1.1.0",
+    "beautifulsoup4>=4.12.0",
     
     # Evaluation
     "sacrebleu>=2.3.0",
     
-    # Optional LLM backends (soft dependencies)
-    # Users install what they need
+    # HTTP requests (for free translators)
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
@@ -56,9 +63,11 @@ layout = ["ultralytics>=8.1.0", "pillow>=10.0.0"]
 # Full installation
 full = [
     "openai>=1.0.0",
+    "anthropic>=0.18.0",
     "ultralytics>=8.1.0",
     "pillow>=10.0.0",
-    "gradio>=4.0.0",
+    "deep-translator>=1.11.4",
+    "keyring>=24.2.0",
 ]
 
 # Development

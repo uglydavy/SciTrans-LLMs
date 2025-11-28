@@ -649,46 +649,51 @@ def keys(
 @app.command()
 def gui(
     port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
-    share: bool = typer.Option(False, "--share", "-s", help="Create public shareable link"),
+    share: bool = typer.Option(False, "--share", "-s", help="Share publicly (not supported in NiceGUI)"),
 ):
-    """Launch the interactive web GUI.
+    """Launch the modern web GUI.
     
-    Opens a browser window with the Gradio interface for easy document translation.
+    Opens a browser window with the NiceGUI interface for scientific document translation.
+    
+    Features:
+    - PDF, DOCX, HTML document support
+    - French ↔ English bilingual translation
+    - Page selection and quality options
+    - Custom glossary support
+    - Dark/Light mode
+    - Developer tools and logging
     """
-    # Check and show detailed dependency status
+    # Check dependencies
     missing_deps = []
     
     try:
-        import gradio
+        import nicegui
     except ImportError as e:
-        missing_deps.append(f"gradio: {e}")
+        missing_deps.append(f"nicegui: {e}")
     
     try:
         import fitz
     except ImportError as e:
         missing_deps.append(f"PyMuPDF: {e}")
     
-    try:
-        import requests
-    except ImportError as e:
-        missing_deps.append(f"requests: {e}")
-    
     if missing_deps:
         console.print("[red]Error:[/] Missing GUI dependencies:")
         for dep in missing_deps:
             console.print(f"  - {dep}")
         console.print("\n[bold]To fix:[/]")
-        console.print("  [cyan]pip install 'gradio>=4.0.0' PyMuPDF requests[/]")
-        console.print("  [dim]Or install all optional deps:[/] [cyan]pip install -e \".[full]\"[/]")
+        console.print("  [cyan]pip install 'nicegui>=1.4.0' PyMuPDF[/]")
+        console.print("  [dim]Or reinstall the package:[/] [cyan]pip install -e .[/]")
         raise typer.Exit(1)
     
     try:
         from scitrans_llms.gui import launch
         
         console.print("[bold]🚀 Starting SciTrans-LLMs GUI...[/]\n")
-        console.print(f"[dim]Server will run on port {port}[/]")
+        console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
+        console.print("[dim]Press Ctrl+C to stop the server[/]\n")
+        
         if share:
-            console.print("[dim]Public sharing enabled[/]")
+            console.print("[yellow]Note:[/] --share is not supported in NiceGUI. Use a reverse proxy for public access.")
         
         launch(port=port, share=share)
     except ImportError as e:
@@ -696,7 +701,7 @@ def gui(
         import traceback
         console.print(f"[dim]{traceback.format_exc()}[/]")
         console.print("\n[bold]To fix:[/]")
-        console.print("  [cyan]pip install 'gradio>=4.0.0' PyMuPDF requests huggingface_hub[/]")
+        console.print("  [cyan]pip install 'nicegui>=1.4.0' PyMuPDF python-docx beautifulsoup4[/]")
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error launching GUI:[/] {e}")

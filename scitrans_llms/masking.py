@@ -126,6 +126,20 @@ class MaskConfig:
     mask_emails: bool = True
     mask_dois: bool = True
     mask_numbers_units: bool = False  # Often want these translated contextually
+    
+    # Convenience aliases for GUI
+    mask_equations: bool = True  # Alias covering all LaTeX math
+    mask_code: bool = True  # Alias covering code blocks and inline
+    
+    def __post_init__(self):
+        """Sync convenience aliases with detailed settings."""
+        if not self.mask_equations:
+            self.mask_latex_inline = False
+            self.mask_latex_display = False
+            self.mask_latex_env = False
+        if not self.mask_code:
+            self.mask_code_blocks = False
+            self.mask_inline_code = False
 
 
 def mask_text(
