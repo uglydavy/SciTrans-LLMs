@@ -274,160 +274,59 @@ def create_translator(backend: str, **kwargs) -> Translator:
         
     Returns:
         Configured Translator instance
-        
-    Supported backends and aliases:
-        - free, cascade: Cascading free translator (Lingva→LibreTranslate→MyMemory) ⭐NEW⭐
-        - dummy, echo, test: Simple test translator (useful for pipeline testing)
-        - dictionary, offline: Dictionary-based (loads 1000+ words from online sources)
-        - openai, gpt: OpenAI GPT models  
-        - gpt4o, gpt-4o: GPT-4o specifically
-        - gpt4mini, gpt-4o-mini: GPT-4o mini (cheaper)
-        - o1, o1-preview: OpenAI o1 reasoning model
-        - o1mini, o1-mini: o1 mini (cheaper reasoning)
-        - deepseek, ds: DeepSeek models
-        - deepseek-v3: Latest DeepSeek (auto-selected)
-        - anthropic, claude: Anthropic Claude models
-        - claude-3-5-sonnet, claude-3-5-haiku: Latest Claude 3.5 models
-        - googlefree: Free Google Translate (no key)
-        - google: Google Cloud Translate (paid)
-        - deepl: DeepL translate
     """
-    backend_lower = backend.lower().replace("_", "-")
+    backend_lower = backend.lower()
     
-    # Free/Test backends
-    if backend_lower in ("free", "cascade", "multi-free"):
-        # New: Cascading free translator (Lingva → LibreTranslate → MyMemory)
-        from scitrans_llms.translate.free_translator import FreeTranslator
-        cache_dir = kwargs.get("cache_dir")
-        return FreeTranslator(cache_dir=cache_dir)
-    
-    elif backend_lower in ("dummy", "echo", "test"):
-        # Useful for testing the pipeline without any translation
+    if backend_lower in ("dummy", "echo", "test"):
         mode = kwargs.get("mode", "prefix")
         return DummyTranslator(mode=mode)
     
     elif backend_lower in ("dictionary", "offline", "glossary"):
-        # Dictionary with online loading (1000+ words, cached)
         glossary = kwargs.get("glossary")
         return DictionaryTranslator(glossary=glossary)
     
-    # OpenAI GPT models with specific model aliases
-    elif backend_lower in ("gpt4o", "gpt-4o"):
+    elif backend_lower in ("openai", "gpt", "gpt4", "gpt-4", "gpt5", "gpt-5", "gpt-5.1"):
         from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="gpt-4o")
+        # Support GPT-5.1 and other newer models
+        model = kwargs.get("model", "gpt-4o")
+        if backend_lower in ("gpt5", "gpt-5", "gpt-5.1"):
+            model = "gpt-5.1" if backend_lower == "gpt-5.1" else "gpt-5"
+        config = kwargs.get("config") or LLMConfig(model=model)
         return OpenAITranslator(config=config, api_key=kwargs.get("api_key"))
     
-    elif backend_lower in ("gpt4mini", "gpt-4o-mini", "gpt4o-mini"):
-        from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="gpt-4o-mini")
-        return OpenAITranslator(config=config, api_key=kwargs.get("api_key"))
+    elif backend_lower in ("improved-offline", "improved", "offline-improved"):
+        from scitrans_llms.translate.offline import ImprovedOfflineTranslator
+        glossary = kwargs.get("glossary")
+        model_path = kwargs.get("model_path")
+        learned_model = kwargs.get("learned_model")
+        return ImprovedOfflineTranslator(glossary=glossary, learned_model=learned_model, model_path=model_path)
     
-    elif backend_lower in ("o1-preview", "o1preview", "o1"):
-        from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="o1-preview", max_tokens=16000)
-        return OpenAITranslator(config=config, api_key=kwargs.get("api_key"))
+    elif backend_lower in ("huggingface", "hf", "hugging-face"):
+        from scitrans_llms.translate.free_apis import HuggingFaceTranslator
+        model = kwargs.get("model", "facebook/mbart-large-50-many-to-many-mmt")
+        api_key = kwargs.get("api_key")
+        return HuggingFaceTranslator(model=model, api_key=api_key)
     
-    elif backend_lower in ("o1-mini", "o1mini"):
-        from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="o1-mini", max_tokens=16000)
-        return OpenAITranslator(config=config, api_key=kwargs.get("api_key"))
+    elif backend_lower in ("ollama", "local-llm"):
+        from scitrans_llms.translate.free_apis import OllamaTranslator
+        model = kwargs.get("model", "llama3")
+        base_url = kwargs.get("base_url", "http://localhost:11434")
+        return OllamaTranslator(model=model, base_url=base_url)
     
-    elif backend_lower in ("openai", "gpt", "gpt4", "gpt-4"):
-        from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig
-        # Default to gpt-4o (best general model)
-        config = kwargs.get("config") or LLMConfig(model=kwargs.get("model", "gpt-4o"))
-        return OpenAITranslator(config=config, api_key=kwargs.get("api_key"))
-    
-    # DeepSeek models
-    elif backend_lower in ("deepseek-v3", "deepseekv3"):
-        from scitrans_llms.translate.llm import DeepSeekTranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="deepseek-chat")  # V3 is default now
-        return DeepSeekTranslator(config=config, api_key=kwargs.get("api_key"))
+    elif backend_lower in ("googlefree", "google-free", "googletrans"):
+        from scitrans_llms.translate.free_apis import GoogleFreeTranslator
+        return GoogleFreeTranslator()
     
     elif backend_lower in ("deepseek", "ds"):
         from scitrans_llms.translate.llm import DeepSeekTranslator, LLMConfig
         config = kwargs.get("config") or LLMConfig(model=kwargs.get("model", "deepseek-chat"))
         return DeepSeekTranslator(config=config, api_key=kwargs.get("api_key"))
     
-    # Anthropic Claude models
-    elif backend_lower in ("claude-3-5-sonnet", "claude-3-5-sonnet-latest", "claude35sonnet"):
-        from scitrans_llms.translate.llm import AnthropicTranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="claude-3-5-sonnet-20241022")
-        return AnthropicTranslator(config=config, api_key=kwargs.get("api_key"))
-    
-    elif backend_lower in ("claude-3-5-haiku", "claude-3-5-haiku-latest", "claude35haiku"):
-        from scitrans_llms.translate.llm import AnthropicTranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model="claude-3-5-haiku-20241022")
-        return AnthropicTranslator(config=config, api_key=kwargs.get("api_key"))
-    
     elif backend_lower in ("anthropic", "claude"):
         from scitrans_llms.translate.llm import AnthropicTranslator, LLMConfig
-        # Default to latest Sonnet (best quality)
-        default_model = kwargs.get("model", "claude-3-5-sonnet-20241022")
-        config = kwargs.get("config") or LLMConfig(model=default_model)
+        config = kwargs.get("config") or LLMConfig(model=kwargs.get("model", "claude-3-sonnet-20240229"))
         return AnthropicTranslator(config=config, api_key=kwargs.get("api_key"))
     
-    elif backend_lower in ("googlefree", "google-free", "google_free"):
-        # Google Free translator uses googletrans library (no API key required)
-        try:
-            from scitrans_llms.translate.google_free import GoogleFreeTranslator
-            return GoogleFreeTranslator()
-        except ImportError:
-            raise ImportError(
-                "Google Free translator requires googletrans. "
-                "Install with: pip install googletrans==4.0.0-rc1"
-            )
-    
-    elif backend_lower in ("deepl",):
-        try:
-            from scitrans_llms.translate.deepl import DeepLTranslator
-            return DeepLTranslator(api_key=kwargs.get("api_key"))
-        except ImportError:
-            raise ImportError(
-                "DeepL translator requires deepl library. "
-                "Install with: pip install deepl"
-            )
-    
-    elif backend_lower in ("google",):
-        try:
-            from scitrans_llms.translate.google_cloud import GoogleCloudTranslator
-            return GoogleCloudTranslator(credentials=kwargs.get("credentials"))
-        except ImportError:
-            raise ImportError(
-                "Google Cloud translator requires google-cloud-translate. "
-                "Install with: pip install google-cloud-translate"
-            )
-    
-    elif backend_lower in ("perplexity",):
-        from scitrans_llms.translate.llm import PerplexityTranslator, LLMConfig
-        config = kwargs.get("config") or LLMConfig(model=kwargs.get("model", "llama-3.1-sonar-small-128k-online"))
-        return PerplexityTranslator(config=config, api_key=kwargs.get("api_key"))
-    
-    # Free online translators (no API key required)
-    elif backend_lower in ("free", "online"):
-        from scitrans_llms.translate.online_dictionary import FreeTranslator
-        return FreeTranslator()
-    
-    elif backend_lower in ("mymemory",):
-        from scitrans_llms.translate.online_dictionary import MyMemoryTranslator
-        return MyMemoryTranslator()
-    
-    elif backend_lower in ("lingva",):
-        from scitrans_llms.translate.online_dictionary import LingvaTranslator
-        return LingvaTranslator()
-    
-    elif backend_lower in ("libretranslate", "libre"):
-        from scitrans_llms.translate.online_dictionary import LibreTranslateTranslator
-        return LibreTranslateTranslator()
-    
     else:
-        available = [
-            "dummy", "dictionary", "openai", "deepseek", "anthropic",
-            "googlefree", "google", "deepl", "perplexity",
-            "free", "mymemory", "lingva", "libretranslate"
-        ]
-        raise ValueError(
-            f"Unknown translator backend: {backend}. "
-            f"Available backends: {', '.join(available)}"
-        )
+        raise ValueError(f"Unknown translator backend: {backend}")
 

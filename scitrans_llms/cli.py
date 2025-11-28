@@ -82,7 +82,7 @@ def translate(
     ),
     backend: str = typer.Option(
         "dummy", "--backend", "-b",
-        help="Translation backend (dummy, dictionary, free, mymemory, lingva, openai, deepseek, anthropic)",
+        help="Translation backend (dummy, dictionary, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama, googlefree)",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
@@ -436,9 +436,31 @@ def info():
         import openai
         import os
         has_key = bool(os.getenv("OPENAI_API_KEY"))
-        table.add_row("openai", "✓ Available" if has_key else "⚠ No API key", "GPT-4, GPT-4o")
+        table.add_row("openai", "✓ Available" if has_key else "⚠ No API key", "GPT-4, GPT-4o, GPT-5.1")
     except ImportError:
         table.add_row("openai", "✗ Not installed", "pip install openai")
+    
+    # Check improved offline
+    table.add_row("improved-offline", "✓ Available", "Enhanced offline translation")
+    
+    # Check Hugging Face
+    import os
+    try:
+        import requests
+        has_hf_key = bool(os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"))
+        table.add_row("huggingface", "✓ Available" if has_hf_key else "⚠ Free tier (no key needed)", "Free API, 1000 req/month")
+    except ImportError:
+        table.add_row("huggingface", "✗ Not installed", "pip install requests")
+    
+    # Check Ollama
+    table.add_row("ollama", "⚠ Check locally", "Local LLM (install from ollama.ai)")
+    
+    # Check Google Free
+    try:
+        import googletrans
+        table.add_row("googlefree", "✓ Available", "Free (unofficial API)")
+    except ImportError:
+        table.add_row("googlefree", "✗ Not installed", "pip install googletrans==4.0.0rc1")
     
     # Check DeepSeek
     import os
@@ -452,15 +474,6 @@ def info():
         table.add_row("anthropic", "✓ Available" if has_key else "⚠ No API key", "Claude 3")
     except ImportError:
         table.add_row("anthropic", "✗ Not installed", "pip install anthropic")
-    
-    # Free online backends (no API key needed)
-    try:
-        import requests
-        table.add_row("free", "✓ Available", "Auto-fallback (Lingva/MyMemory)")
-        table.add_row("mymemory", "✓ Available", "Free translation memory")
-        table.add_row("lingva", "✓ Available", "Google Translate frontend")
-    except ImportError:
-        table.add_row("free", "✗ requests missing", "pip install requests")
     
     console.print(table)
     
@@ -617,6 +630,15 @@ def gui(
     
     Opens a browser window with the Gradio interface for easy document translation.
     """
+    # Check for gradio first
+    try:
+        import gradio
+    except ImportError:
+        console.print("[red]Error:[/] GUI dependencies not installed")
+        console.print("Install with: [cyan]pip install -e \".[full]\"[/]")
+        console.print("Or just Gradio: [cyan]pip install 'gradio>=4.0.0'[/]")
+        raise typer.Exit(1)
+    
     try:
         from scitrans_llms.gui import launch
         
@@ -627,19 +649,13 @@ def gui(
         
         launch()
     except ImportError as e:
-        console.print("[red]Error:[/] GUI dependencies not installed")
-        console.print("Install with: [cyan]pip install -e \".[full]\"[/]")
-        console.print("Or just Gradio: [cyan]pip install gradio>=4.0.0[/]")
+        console.print(f"[red]Error:[/] Failed to import GUI module: {e}")
+        console.print("Make sure all dependencies are installed: [cyan]pip install -e \".[full]\"[/]")
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error launching GUI:[/] {e}")
         raise typer.Exit(1)
 
 
-def cli_main():
-    """Entry point for console_scripts."""
-    app()
-
-
 if __name__ == "__main__":
-    cli_main()
+    app()

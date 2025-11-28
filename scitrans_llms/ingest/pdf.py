@@ -21,24 +21,11 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Iterator, List, Tuple
+from typing import Optional, Iterator
 
 from scitrans_llms.models import (
     Document, Segment, Block, BlockType, BoundingBox
 )
-
-
-# Simple Block for analyzer compatibility
-@dataclass
-class SimpleBlock:
-    """A simple block for analyzer compatibility.
-    
-    This is a simpler structure used by the analyzer module.
-    """
-    text: str
-    page_index: int
-    bbox: Tuple[float, float, float, float]
-    kind: Optional[str] = None
 
 
 @dataclass
@@ -548,116 +535,42 @@ def parse_pdf(
     return parser.parse(pdf_path, pages, source_lang, target_lang)
 
 
+# Compatibility layer for old API
+class _LegacyBlock:
+    """Legacy block format for compatibility with old analyzer code."""
+    def __init__(self, block: Block):
+        self.text = block.source_text
+        self.page_index = block.bbox.page if block.bbox else 0
+        self.kind = block.block_type.name.lower() if block.block_type else "paragraph"
+        if block.bbox:
+            self.bbox = (block.bbox.x0, block.bbox.y0, block.bbox.x1, block.bbox.y1)
+        else:
+            self.bbox = (0.0, 0.0, 0.0, 0.0)
+
+
 def extract_blocks(
     pdf_path: str | Path,
-    pages: Optional[List[int]] = None,
-    notes: Optional[List[str]] = None,
-) -> Tuple[List[SimpleBlock], dict]:
-    """Extract blocks from a PDF for analyzer compatibility.
+    pages: Optional[list[int]] = None,
+    notes: Optional[dict] = None,
+) -> tuple[list[_LegacyBlock], dict]:
+    """Extract blocks from PDF (legacy compatibility function).
     
-    This is a simpler extraction function used by the analyzer module.
+    This function provides compatibility with old code that expects
+    blocks with .text, .page_index, .kind, and .bbox attributes.
     
     Args:
         pdf_path: Path to PDF file
         pages: Optional list of page numbers (0-indexed)
-        notes: Optional list to append notes/warnings
+        notes: Optional notes dict (ignored, kept for compatibility)
         
     Returns:
-        Tuple of (list of SimpleBlock, metadata dict)
+        Tuple of (list of legacy blocks, metadata dict)
     """
-    try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        if notes is not None:
-            notes.append("PyMuPDF not installed")
-        return [], {}
-    
-    pdf_path = Path(pdf_path)
-    if not pdf_path.exists():
-        if notes is not None:
-            notes.append(f"PDF not found: {pdf_path}")
-        return [], {}
-    
-    blocks = []
-    metadata = {}
-    
-    try:
-        doc = fitz.open(str(pdf_path))
-        metadata["page_count"] = len(doc)
-        
-        # Determine pages to process
-        if pages is None:
-            page_nums = list(range(len(doc)))
-        else:
-            page_nums = [p for p in pages if 0 <= p < len(doc)]
-        
-        for page_num in page_nums:
-            page = doc[page_num]
-            
-            # Extract text blocks with bboxes
-            text_dict = page.get_text("dict", flags=0)
-            
-            for block in text_dict.get("blocks", []):
-                if block.get("type") == 0:  # Text block
-                    # Combine all text from lines/spans
-                    text_parts = []
-                    for line in block.get("lines", []):
-                        for span in line.get("spans", []):
-                            text_parts.append(span.get("text", ""))
-                    
-                    text = " ".join(text_parts).strip()
-                    if not text:
-                        continue
-                    
-                    bbox = block.get("bbox", (0, 0, 0, 0))
-                    
-                    # Determine block kind using heuristics
-                    kind = _classify_text(text, bbox, page.rect.height)
-                    
-                    blocks.append(SimpleBlock(
-                        text=text,
-                        page_index=page_num,
-                        bbox=tuple(bbox),
-                        kind=kind,
-                    ))
-        
-        doc.close()
-        
-    except Exception as e:
-        if notes is not None:
-            notes.append(f"Error extracting blocks: {e}")
-    
-    return blocks, metadata
-
-
-def _classify_text(text: str, bbox: tuple, page_height: float) -> str:
-    """Classify text block type using simple heuristics."""
-    text_lower = text.lower().strip()
-    y0 = bbox[1]
-    
-    # Header/footer detection
-    if y0 < 50:
-        return "header"
-    if y0 > page_height - 50:
-        return "footer"
-    
-    # Caption detection
-    if text_lower.startswith(("figure", "fig.", "table", "tab.")):
-        return "caption"
-    
-    # Heading detection (short, possibly uppercase)
-    words = text.split()
-    if len(words) <= 8 and (text.isupper() or text.istitle()):
-        return "heading"
-    
-    # Reference detection
-    if re.match(r'^\[\d+\]', text) or "doi:" in text_lower or "arxiv:" in text_lower:
-        return "reference"
-    
-    # Default
-    return "paragraph"
-
-
-# Alias for backward compatibility
-Block = SimpleBlock
+    doc = parse_pdf(pdf_path, pages=pages)
+    legacy_blocks = [_LegacyBlock(block) for block in doc.all_blocks]
+    metadata = {
+        "total_pages": len(doc.segments),
+        "total_blocks": len(legacy_blocks),
+    }
+    return legacy_blocks, metadata
 

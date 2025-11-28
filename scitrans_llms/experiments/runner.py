@@ -138,6 +138,7 @@ class ExperimentRunner:
         
         all_hypotheses = []
         all_sources = []
+        all_references = []
         errors = []
         
         start_time = time.time()
@@ -153,27 +154,75 @@ class ExperimentRunner:
                 trans_doc = doc.to_document()
                 result = pipeline.translate(trans_doc)
                 
-                # Collect translations
+                # Collect translations block-by-block
+                # Also collect corresponding references from reference paragraphs
+                ref_paras = doc.reference_paragraphs
+                ref_para_idx = 0
+                
                 for block in trans_doc.all_blocks:
                     if block.is_translatable:
                         all_hypotheses.append(block.translated_text or "")
                         all_sources.append(block.source_text)
+                        
+                        # Match reference: use corresponding paragraph from reference
+                        if ref_para_idx < len(ref_paras):
+                            all_references.append(ref_paras[ref_para_idx])
+                            ref_para_idx += 1
+                        elif ref_paras:
+                            # If we run out, use the last reference paragraph
+                            all_references.append(ref_paras[-1])
+                        else:
+                            # No reference available, use source as fallback
+                            all_references.append(block.source_text)
                 
             except Exception as e:
                 errors.append(f"{doc.doc_id}: {str(e)}")
+                # For failed documents, still collect references to maintain alignment
+                # Count how many translatable blocks would have been processed
+                try:
+                    ref_doc = doc.to_document()
+                    num_translatable = sum(1 for b in ref_doc.all_blocks if b.is_translatable)
+                    ref_paras = doc.reference_paragraphs
+                    for idx in range(num_translatable):
+                        if idx < len(ref_paras):
+                            all_references.append(ref_paras[idx])
+                        elif ref_paras:
+                            all_references.append(ref_paras[-1])
+                        else:
+                            all_references.append("")
+                except:
+                    pass  # If we can't collect references, evaluation will handle mismatch
         
         duration = time.time() - start_time
+        
+        # Ensure lengths match - trim to shortest list
+        if all_hypotheses and all_references:
+            min_len = min(len(all_hypotheses), len(all_references), len(all_sources))
+            if min_len < len(all_hypotheses):
+                # Trim to match
+                all_hypotheses = all_hypotheses[:min_len]
+                all_references = all_references[:min_len]
+                all_sources = all_sources[:min_len]
         
         # Evaluate
         progress_callback("Evaluating...", 1.0)
         
-        eval_runner = EvaluationRunner(glossary=self.glossary)
-        evaluation = eval_runner.evaluate(
-            hypotheses=all_hypotheses,
-            references=self.corpus.get_all_references()[:len(all_hypotheses)],
-            sources=all_sources,
-            run_id=config.name,
-        )
+        if not all_hypotheses:
+            # Create empty evaluation report
+            from scitrans_llms.eval.runner import EvaluationReport
+            evaluation = EvaluationReport(
+                run_id=config.name,
+                timestamp=datetime.now().isoformat(),
+                num_segments=0,
+            )
+        else:
+            eval_runner = EvaluationRunner(glossary=self.glossary)
+            evaluation = eval_runner.evaluate(
+                hypotheses=all_hypotheses,
+                references=all_references,
+                sources=all_sources,
+                run_id=config.name,
+            )
         
         result = ExperimentResult(
             config=config,
