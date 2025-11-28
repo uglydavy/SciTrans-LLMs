@@ -81,19 +81,65 @@ def launch(port: int = 7860, share: bool = False):
         backends = [
             ("free", "Free (Lingva/LibreTranslate)", True),
             ("dictionary", "Dictionary Only", True),
+            ("improved-offline", "Improved Offline", True),
         ]
+        
+        # Check Ollama
+        try:
+            import requests
+            resp = requests.get("http://localhost:11434/api/tags", timeout=2)
+            if resp.status_code == 200:
+                models = resp.json().get("models", [])
+                if models:
+                    model_name = models[0].get('name', 'local') if models else 'local'
+                    backends.append(("ollama", f"Ollama ({model_name})", True))
+                else:
+                    backends.append(("ollama", "Ollama (no models)", False))
+            else:
+                backends.append(("ollama", "Ollama (not running)", False))
+        except Exception:
+            backends.append(("ollama", "Ollama (not running)", False))
+        
+        # Check HuggingFace
+        try:
+            from scitrans_llms.translate.free_apis import HuggingFaceTranslator
+            has_hf_key = km.get_key("huggingface") is not None
+            if has_hf_key:
+                backends.append(("huggingface", "HuggingFace (with key)", True))
+            else:
+                backends.append(("huggingface", "HuggingFace (free tier, no key)", True))
+        except Exception:
+            backends.append(("huggingface", "HuggingFace (not installed)", False))
+        
+        # Check Google Free
+        try:
+            from deep_translator import GoogleTranslator
+            backends.append(("googlefree", "Google Free", True))
+        except Exception:
+            backends.append(("googlefree", "Google Free (not installed)", False))
+        
+        # OpenAI
         if km.get_key("openai"):
             backends.append(("openai", "OpenAI GPT-4", True))
         else:
             backends.append(("openai", "OpenAI GPT-4 (no key)", False))
+        
+        # DeepSeek
         if km.get_key("deepseek"):
             backends.append(("deepseek", "DeepSeek (cheap)", True))
         else:
             backends.append(("deepseek", "DeepSeek (no key)", False))
-        if km.get_key("anthropic"):
-            backends.append(("anthropic", "Claude", True))
-        else:
-            backends.append(("anthropic", "Claude (no key)", False))
+        
+        # Anthropic
+        try:
+            import anthropic
+            if km.get_key("anthropic"):
+                backends.append(("anthropic", "Claude", True))
+            else:
+                backends.append(("anthropic", "Claude (no key)", False))
+        except Exception:
+            backends.append(("anthropic", "Claude (not installed)", False))
+        
         return backends
     
     # =========================================================================
@@ -366,18 +412,18 @@ def launch(port: int = 7860, share: bool = False):
         # =====================================================================
         # Header
         # =====================================================================
-        with ui.header().classes('items-center justify-between px-6 py-3 hero-gradient'):
-            with ui.row().classes('items-center gap-3'):
-                ui.icon('translate', size='lg').classes('text-white')
-                ui.label('SciTrans-LLMs').classes('text-2xl font-bold text-white tracking-tight')
-                ui.badge('v0.2.0').classes('bg-white/20 text-white')
+        with ui.header().classes('items-center justify-between px-4 py-2 hero-gradient'):
+            with ui.row().classes('items-center gap-2'):
+                ui.icon('translate', size='md').classes('text-white')
+                ui.label('SciTrans-LLMs').classes('text-lg font-bold text-white')
+                ui.badge('v0.2.0').classes('bg-white/20 text-white text-xs')
             
-            with ui.row().classes('items-center gap-4'):
+            with ui.row().classes('items-center gap-2'):
                 # Language indicator
-                with ui.row().classes('items-center gap-2 bg-white/10 rounded-full px-4 py-2'):
-                    ui.label('EN').classes('text-white font-semibold')
-                    ui.icon('swap_horiz').classes('text-white/70')
-                    ui.label('FR').classes('text-white font-semibold')
+                with ui.row().classes('items-center gap-1 bg-white/10 rounded-full px-2 py-1'):
+                    ui.label('EN').classes('text-white font-semibold text-xs')
+                    ui.icon('swap_horiz', size='sm').classes('text-white/70')
+                    ui.label('FR').classes('text-white font-semibold text-xs')
                 
                 # Theme toggle
                 def toggle_theme():
@@ -387,16 +433,16 @@ def launch(port: int = 7860, share: bool = False):
                 ui.button(
                     icon='dark_mode' if dark.value else 'light_mode',
                     on_click=toggle_theme
-                ).props('flat round').classes('text-white')
+                ).props('flat round dense').classes('text-white')
         
         # =====================================================================
         # Main Content
         # =====================================================================
-        with ui.tabs().classes('w-full').props('dense inline-label') as tabs:
-            translate_tab = ui.tab('translate', label='Translate Document', icon='description')
+        with ui.tabs().classes('w-full text-xs').props('dense inline-label') as tabs:
+            translate_tab = ui.tab('translate', label='Translate', icon='description')
             glossary_tab = ui.tab('glossary', label='Glossary', icon='menu_book')
-            developer_tab = ui.tab('developer', label='Developer Tools', icon='code')
-            settings_tab = ui.tab('settings', label='Settings & Keys', icon='settings')
+            developer_tab = ui.tab('developer', label='Developer', icon='code')
+            settings_tab = ui.tab('settings', label='Settings', icon='settings')
         
         with ui.tab_panels(tabs, value=translate_tab).classes('w-full flex-grow'):
             # =================================================================
@@ -424,8 +470,8 @@ def launch(port: int = 7860, share: bool = False):
                 await render_settings_panel(km)
         
         # Footer
-        with ui.footer().classes('py-4 px-6 text-center'):
-            ui.label('SciTrans-LLMs — Scientific Document Translation System').classes('text-sm opacity-70')
+        with ui.footer().classes('py-2 px-4 text-center'):
+            ui.label('SciTrans-LLMs — Scientific Document Translation System').classes('text-xs opacity-70')
     
     async def render_translate_panel():
         """Render the main translation panel."""
@@ -434,239 +480,262 @@ def launch(port: int = 7860, share: bool = False):
         progress_container = None
         result_container = None
         
-        with ui.row().classes('w-full gap-6 p-6'):
-            # Left column - Input
-            with ui.column().classes('w-1/2 gap-4'):
-                # Source selection card
-                with ui.card().classes('w-full'):
-                    ui.label('Source Document').classes('text-lg font-semibold mb-4')
-                    
-                    with ui.tabs().classes('w-full') as source_tabs:
-                        upload_tab = ui.tab('upload', label='Upload File', icon='upload_file')
-                        url_tab = ui.tab('url', label='From URL', icon='link')
-                    
-                    with ui.tab_panels(source_tabs, value=upload_tab).classes('w-full'):
-                        with ui.tab_panel(upload_tab):
-                            # File upload area
-                            def handle_upload(e):
-                                if e.content:
-                                    # Save uploaded file
-                                    temp_dir = Path(tempfile.gettempdir()) / "scitrans_uploads"
-                                    temp_dir.mkdir(exist_ok=True)
-                                    file_path = temp_dir / e.name
-                                    with open(file_path, 'wb') as f:
-                                        f.write(e.content.read())
-                                    uploaded_file['path'] = file_path
-                                    uploaded_file['name'] = e.name
-                                    upload_label.set_text(f'✓ {e.name}')
-                                    upload_label.classes(replace='text-green-500')
+        # Main container - centered and compact, no scrolling
+        with ui.column().classes('w-full max-w-6xl mx-auto gap-2 p-3'):
+            # Source selection card
+            with ui.card().classes('w-full'):
+                ui.label('Source Document').classes('text-sm font-semibold mb-2')
+                
+                with ui.tabs().classes('w-full') as source_tabs:
+                    upload_tab = ui.tab('upload', label='Upload File', icon='upload_file')
+                    url_tab = ui.tab('url', label='From URL', icon='link')
+                
+                with ui.tab_panels(source_tabs, value=upload_tab).classes('w-full'):
+                    with ui.tab_panel(upload_tab):
+                        # File upload area
+                        async def handle_upload(e):
+                            try:
+                                # NiceGUI UploadEventArguments has a 'file' attribute (FileUpload instance)
+                                file_obj = e.file
+                                file_name = file_obj.name
+                                
+                                # Save file to our temp directory
+                                temp_dir = Path(tempfile.gettempdir()) / "scitrans_uploads"
+                                temp_dir.mkdir(exist_ok=True)
+                                file_path = temp_dir / file_name
+                                
+                                # Use FileUpload's save method
+                                await file_obj.save(file_path)
+                                
+                                uploaded_file['path'] = file_path
+                                uploaded_file['name'] = file_name
+                                
+                                upload_label.set_text(f'✓ {file_name}')
+                                upload_label.classes(replace='text-green-500 text-xs')
+                                ui.notify(f'File uploaded: {file_name}', type='positive')
+                            except Exception as ex:
+                                logger.exception("Upload error")
+                                ui.notify(f'Upload error: {str(ex)}', type='negative')
+                        
+                        with ui.column().classes('w-full items-center gap-2 p-4 border-2 border-dashed rounded'):
+                            ui.icon('cloud_upload', size='2rem').classes('opacity-50')
+                            upload_label = ui.label('Drop PDF, DOCX, or HTML file here').classes('text-xs text-center')
+                            upload_comp = ui.upload(
+                                on_upload=handle_upload,
+                                auto_upload=True,
+                            ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt"').classes('w-full text-xs')
                             
-                            with ui.column().classes('w-full items-center gap-4 p-8 border-2 border-dashed rounded-xl'):
-                                ui.icon('cloud_upload', size='3rem').classes('opacity-50')
-                                upload_label = ui.label('Drop PDF, DOCX, or HTML file here').classes('text-center')
-                                ui.upload(
-                                    on_upload=handle_upload,
-                                    auto_upload=True,
-                                ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt"').classes('w-full')
-                        
-                        with ui.tab_panel(url_tab):
-                            url_input = ui.input(
-                                'Paper URL',
-                                placeholder='https://arxiv.org/pdf/...'
-                            ).classes('w-full')
-                            ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-xs opacity-60')
+                            # Store upload component for file access
+                            uploaded_file['_upload'] = upload_comp
                     
-                    # Supported formats
-                    ui.separator().classes('my-4')
-                    with ui.row().classes('gap-2 flex-wrap'):
-                        for fmt in ['PDF', 'DOCX', 'HTML', 'TXT']:
-                            ui.badge(fmt).classes('bg-primary/10 text-primary')
+                    with ui.tab_panel(url_tab):
+                        url_input = ui.input(
+                            'Paper URL',
+                            placeholder='https://arxiv.org/pdf/...'
+                        ).classes('w-full text-xs').props('dense')
+                        ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-xs opacity-60')
                 
-                # Translation settings card
-                with ui.card().classes('w-full'):
-                    ui.label('Translation Settings').classes('text-lg font-semibold mb-4')
-                    
-                    # Direction toggle
-                    with ui.row().classes('items-center gap-4 mb-4'):
-                        ui.label('Direction:').classes('font-medium')
-                        direction = ui.toggle(
-                            {
-                                'en-fr': 'English → French',
-                                'fr-en': 'French → English'
-                            },
-                            value='en-fr'
-                        ).classes('flex-grow')
-                    
-                    # Page selection
-                    with ui.row().classes('items-center gap-4 mb-4'):
-                        ui.label('Pages:').classes('font-medium w-24')
-                        pages_input = ui.input(
-                            value='all',
-                            placeholder='all or 1-10'
-                        ).classes('flex-grow').props('dense')
-                        ui.label('(e.g., "all", "1-5", "3")').classes('text-xs opacity-60')
-                    
-                    # Engine selection
-                    with ui.row().classes('items-center gap-4 mb-4'):
-                        ui.label('Engine:').classes('font-medium w-24')
-                        backends = get_available_backends()
-                        engine_options = {b[0]: b[1] for b in backends if b[2]}
-                        engine_select = ui.select(
-                            engine_options,
-                            value='free'
-                        ).classes('flex-grow')
-                    
-                    ui.separator().classes('my-4')
-                    
-                    # Advanced options
-                    with ui.expansion('Advanced Options', icon='tune').classes('w-full'):
-                        # Masking options
-                        ui.label('Content Preservation').classes('font-medium mb-2')
-                        enable_masking = ui.checkbox('Enable masking (protect formulas, code, etc.)', value=True)
-                        
-                        with ui.row().classes('gap-4 ml-6'):
-                            translate_equations = ui.checkbox('Translate equations', value=False)
-                            translate_tables = ui.checkbox('Translate table content', value=False)
-                            translate_figures = ui.checkbox('Translate figure captions', value=True)
-                        
-                        ui.separator().classes('my-4')
-                        
-                        # Quality options
-                        ui.label('Quality Settings').classes('font-medium mb-2')
-                        with ui.row().classes('items-center gap-4'):
-                            ui.label('Quality passes:')
-                            quality_passes = ui.slider(min=1, max=5, value=1, step=1).classes('flex-grow')
-                            ui.label().bind_text_from(quality_passes, 'value')
-                        
-                        enable_reranking = ui.checkbox('Enable reranking (multiple candidates)', value=False)
-                
-                # Custom glossary
-                with ui.card().classes('w-full'):
-                    with ui.row().classes('items-center justify-between mb-2'):
-                        ui.label('Custom Glossary').classes('text-lg font-semibold')
-                        ui.button('Load Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
-                            '# Custom glossary (one term per line)\n'
-                            '# Format: source_term, target_term\n'
-                            'neural network, réseau de neurones\n'
-                            'machine learning, apprentissage automatique\n'
-                            'deep learning, apprentissage profond\n'
-                            'attention mechanism, mécanisme d\'attention\n'
-                            'transformer, transformeur\n'
-                        )).props('flat dense')
-                    
-                    glossary_input = ui.textarea(
-                        placeholder='# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond',
-                    ).classes('w-full mono-font').props('rows=6')
+                # Supported formats
+                ui.separator().classes('my-2')
+                with ui.row().classes('gap-1 flex-wrap'):
+                    for fmt in ['PDF', 'DOCX', 'HTML', 'TXT']:
+                        ui.badge(fmt).classes('bg-primary/10 text-primary text-xs')
             
-            # Right column - Output
-            with ui.column().classes('w-1/2 gap-4'):
-                # Action button
-                async def start_translation():
-                    # Build job
-                    job = TranslationJob(
-                        source_path=uploaded_file.get('path'),
-                        source_url=url_input.value if url_input.value else None,
-                        direction=direction.value,
-                        pages=pages_input.value,
-                        engine=engine_select.value,
-                        enable_masking=enable_masking.value,
-                        translate_figures=translate_figures.value,
-                        translate_tables=translate_tables.value,
-                        translate_equations=translate_equations.value,
-                        quality_passes=int(quality_passes.value),
-                        enable_reranking=enable_reranking.value,
-                        custom_glossary=glossary_input.value,
-                    )
+            # Translation settings card
+            with ui.card().classes('w-full'):
+                ui.label('Translation Settings').classes('text-sm font-semibold mb-2')
                     
-                    if not job.source_path and not job.source_url:
-                        ui.notify('Please upload a file or provide a URL', type='warning')
-                        return
-                    
-                    state.current_job = job
-                    
-                    # Show progress
-                    progress_card.visible = True
-                    result_card.visible = False
-                    progress_bar.value = 0
-                    progress_label.set_text('Starting...')
-                    
-                    # Progress callback
-                    def update_progress(msg: str, pct: float):
-                        progress_bar.value = pct
-                        progress_label.set_text(msg)
-                        log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
-                    
-                    # Run translation
-                    result = await run_translation(job, update_progress)
-                    
-                    # Show result
-                    progress_card.visible = False
-                    result_card.visible = True
-                    
-                    if result.get('success'):
-                        result_status.set_text('✓ Translation Complete!')
-                        result_status.classes(replace='text-2xl font-bold text-green-500')
-                        result_path.set_text(f"Saved to: {result.get('output_path')}")
-                        result_path.visible = True
-                        download_btn.visible = True
-                        # Store for download
-                        result_card._output_path = result.get('output_path')
-                        
-                        # Show stats
-                        stats = result.get('stats', {})
-                        stats_text = f"Blocks: {stats.get('total_blocks', 0)} total, {stats.get('translated_blocks', 0)} translated"
-                        if stats.get('masks_applied'):
-                            stats_text += f", {stats.get('masks_applied')} masks applied"
-                        result_stats.set_text(stats_text)
-                        result_stats.visible = True
-                    else:
-                        result_status.set_text('✗ Translation Failed')
-                        result_status.classes(replace='text-2xl font-bold text-red-500')
-                        result_path.set_text(f"Error: {result.get('error')}")
-                        result_path.visible = True
-                        download_btn.visible = False
-                        result_stats.visible = False
+                # Direction toggle
+                with ui.row().classes('items-center gap-2 mb-2'):
+                    ui.label('Direction:').classes('font-medium text-xs w-20')
+                    direction = ui.toggle(
+                        {
+                            'en-fr': 'EN → FR',
+                            'fr-en': 'FR → EN'
+                        },
+                        value='en-fr'
+                    ).classes('flex-grow text-xs')
                 
-                with ui.card().classes('w-full'):
+                # Page selection
+                with ui.row().classes('items-center gap-2 mb-2'):
+                    ui.label('Pages:').classes('font-medium text-xs w-20')
+                    pages_input = ui.input(
+                        value='all',
+                        placeholder='all or 1-10'
+                    ).classes('flex-grow text-xs').props('dense')
+                    ui.label('(e.g., "all", "1-5")').classes('text-xs opacity-60')
+                
+                # Engine selection
+                with ui.row().classes('items-center gap-2 mb-2'):
+                    ui.label('Engine:').classes('font-medium text-xs w-20')
+                    backends = get_available_backends()
+                    # Show all backends, but mark disabled ones
+                    engine_options = {}
+                    for backend_id, backend_name, is_enabled in backends:
+                        if is_enabled:
+                            engine_options[backend_id] = backend_name
+                        else:
+                            engine_options[backend_id] = f"{backend_name} (disabled)"
+                    engine_select = ui.select(
+                        engine_options,
+                        value='free'
+                    ).classes('flex-grow text-xs').props('dense')
+                    
+                ui.separator().classes('my-2')
+                
+                # Advanced options
+                with ui.expansion('Advanced Options', icon='tune').classes('w-full text-xs'):
+                    # Masking options
+                    ui.label('Content Preservation').classes('font-medium mb-1 text-xs')
+                    enable_masking = ui.checkbox('Enable masking (protect formulas, code, etc.)', value=True).classes('text-xs')
+                    
+                    with ui.row().classes('gap-2 ml-4'):
+                        translate_equations = ui.checkbox('Translate equations', value=False).classes('text-xs')
+                        translate_tables = ui.checkbox('Translate tables', value=False).classes('text-xs')
+                        translate_figures = ui.checkbox('Translate captions', value=True).classes('text-xs')
+                    
+                    ui.separator().classes('my-2')
+                    
+                    # Quality options
+                    ui.label('Quality Settings').classes('font-medium mb-1 text-xs')
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label('Quality passes:').classes('text-xs')
+                        quality_passes = ui.slider(min=1, max=5, value=1, step=1).classes('flex-grow')
+                        quality_label = ui.label('1').classes('text-xs w-8')
+                        quality_passes.on('update:model-value', lambda e: quality_label.set_text(str(int(e.args))))
+                    
+                    enable_reranking = ui.checkbox('Enable reranking', value=False).classes('text-xs')
+            
+            # Custom glossary
+            with ui.card().classes('w-full'):
+                with ui.row().classes('items-center justify-between mb-1'):
+                    ui.label('Custom Glossary').classes('text-sm font-semibold')
+                    ui.button('Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
+                        '# Custom glossary (one term per line)\n'
+                        '# Format: source_term, target_term\n'
+                        'neural network, réseau de neurones\n'
+                        'machine learning, apprentissage automatique\n'
+                        'deep learning, apprentissage profond\n'
+                        'attention mechanism, mécanisme d\'attention\n'
+                        'transformer, transformeur\n'
+                    )).props('flat dense size=sm').classes('text-xs')
+                
+                glossary_input = ui.textarea(
+                    placeholder='# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond',
+                ).classes('w-full mono-font text-xs').props('rows=4')
+            
+            # Action button and results - use grid layout
+            with ui.grid(columns=2).classes('w-full gap-3'):
+                # Left column: Translate button and progress
+                with ui.column().classes('gap-2'):
+                    async def start_translation():
+                        # Get uploaded file path
+                        source_path = uploaded_file.get('path')
+                        
+                        # Build job
+                        job = TranslationJob(
+                            source_path=source_path,
+                            source_url=url_input.value.strip() if url_input.value and url_input.value.strip() else None,
+                            direction=direction.value,
+                            pages=pages_input.value,
+                            engine=engine_select.value,
+                            enable_masking=enable_masking.value,
+                            translate_figures=translate_figures.value,
+                            translate_tables=translate_tables.value,
+                            translate_equations=translate_equations.value,
+                            quality_passes=int(quality_passes.value),
+                            enable_reranking=enable_reranking.value,
+                            custom_glossary=glossary_input.value,
+                        )
+                        
+                        if not job.source_path and not job.source_url:
+                            ui.notify('Please upload a file or provide a URL', type='warning')
+                            return
+                        
+                        state.current_job = job
+                        
+                        # Show progress
+                        progress_card.visible = True
+                        result_card.visible = False
+                        progress_bar.value = 0
+                        progress_label.set_text('Starting...')
+                        
+                        # Progress callback
+                        def update_progress(msg: str, pct: float):
+                            progress_bar.value = pct
+                            progress_label.set_text(msg)
+                            log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+                        
+                        # Run translation
+                        result = await run_translation(job, update_progress)
+                        
+                        # Show result
+                        progress_card.visible = False
+                        result_card.visible = True
+                        
+                        if result.get('success'):
+                            result_status.set_text('✓ Translation Complete!')
+                            result_status.classes(replace='text-lg font-bold text-green-500')
+                            result_path.set_text(f"Saved to: {result.get('output_path')}")
+                            result_path.visible = True
+                            download_btn.visible = True
+                            # Store for download
+                            result_card._output_path = result.get('output_path')
+                            
+                            # Show stats
+                            stats = result.get('stats', {})
+                            stats_text = f"Blocks: {stats.get('total_blocks', 0)} total, {stats.get('translated_blocks', 0)} translated"
+                            if stats.get('masks_applied'):
+                                stats_text += f", {stats.get('masks_applied')} masks applied"
+                            result_stats.set_text(stats_text)
+                            result_stats.visible = True
+                        else:
+                            result_status.set_text('✗ Translation Failed')
+                            result_status.classes(replace='text-lg font-bold text-red-500')
+                            result_path.set_text(f"Error: {result.get('error')}")
+                            result_path.visible = True
+                            download_btn.visible = False
+                            result_stats.visible = False
+                    
                     ui.button(
                         'Translate Document',
                         icon='translate',
                         on_click=start_translation
-                    ).classes('w-full text-lg py-4').props('color=primary size=lg')
-                
-                # Progress card
-                with ui.card().classes('w-full') as progress_card:
-                    progress_card.visible = False
-                    ui.label('Translation Progress').classes('text-lg font-semibold mb-4')
-                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
-                    progress_label = ui.label('Starting...').classes('text-center mt-2')
+                    ).classes('w-full text-sm py-2').props('color=primary')
                     
-                    ui.separator().classes('my-4')
-                    ui.label('Log').classes('font-medium')
-                    log_output = ui.log(max_lines=20).classes('w-full h-40 mono-font text-xs')
-                
-                # Result card
-                with ui.card().classes('w-full') as result_card:
-                    result_card.visible = False
-                    result_status = ui.label('').classes('text-2xl font-bold text-center mb-4')
-                    result_path = ui.label('').classes('text-sm opacity-70')
-                    result_stats = ui.label('').classes('text-sm opacity-70 mt-2')
+                    # Progress card
+                    with ui.card().classes('w-full') as progress_card:
+                        progress_card.visible = False
+                        ui.label('Translation Progress').classes('text-sm font-semibold mb-2')
+                        progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
+                        progress_label = ui.label('Starting...').classes('text-center mt-1 text-xs')
+                        
+                        ui.separator().classes('my-2')
+                        ui.label('Log').classes('font-medium text-xs')
+                        log_output = ui.log(max_lines=10).classes('w-full h-32 mono-font text-xs')
                     
-                    def download_result():
-                        if hasattr(result_card, '_output_path') and result_card._output_path:
-                            ui.download(result_card._output_path)
-                    
-                    download_btn = ui.button(
-                        'Download Translated PDF',
-                        icon='download',
-                        on_click=download_result
-                    ).classes('w-full mt-4')
+                    # Result card
+                    with ui.card().classes('w-full') as result_card:
+                        result_card.visible = False
+                        result_status = ui.label('').classes('text-lg font-bold text-center mb-2')
+                        result_path = ui.label('').classes('text-xs opacity-70')
+                        result_stats = ui.label('').classes('text-xs opacity-70 mt-1')
+                        
+                        def download_result():
+                            if hasattr(result_card, '_output_path') and result_card._output_path:
+                                ui.download(result_card._output_path)
+                        
+                        download_btn = ui.button(
+                            'Download Translated PDF',
+                            icon='download',
+                            on_click=download_result
+                        ).classes('w-full mt-2 text-xs').props('size=sm')
                 
-                # Preview area
-                with ui.card().classes('w-full flex-grow'):
-                    ui.label('Output Preview').classes('text-lg font-semibold mb-4')
-                    with ui.scroll_area().classes('w-full h-64 border rounded'):
-                        ui.label('Translation output will appear here...').classes('text-center opacity-50 p-8')
+                # Right column: Preview/Info area (can be used for stats or preview)
+                with ui.column().classes('gap-2'):
+                    with ui.card().classes('w-full'):
+                        ui.label('Translation Info').classes('text-sm font-semibold mb-2')
+                        ui.label('Upload a document and click Translate to begin.').classes('text-xs opacity-70')
     
     async def render_glossary_panel():
         """Render the glossary management panel."""
