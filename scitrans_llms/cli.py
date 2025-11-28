@@ -82,7 +82,7 @@ def translate(
     ),
     backend: str = typer.Option(
         "dummy", "--backend", "-b",
-        help="Translation backend (dummy, dictionary, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama, googlefree)",
+        help="Translation backend (free ⭐, dummy, dictionary, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama)",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
@@ -440,6 +440,9 @@ def info():
     except ImportError:
         table.add_row("openai", "✗ Not installed", "pip install openai")
     
+    # Check Free Cascading Translator
+    table.add_row("free", "✓ Available", "⭐ Smart cascade: Lingva→LibreTranslate→MyMemory")
+    
     # Check improved offline
     table.add_row("improved-offline", "✓ Available", "Enhanced offline translation")
     
@@ -448,18 +451,36 @@ def info():
     try:
         import requests
         has_hf_key = bool(os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"))
-        table.add_row("huggingface", "✓ Available" if has_hf_key else "⚠ Free tier (no key needed)", "Free API, 1000 req/month")
+        status = "✓ Available (with key)" if has_hf_key else "✓ Available (free tier)"
+        table.add_row("huggingface", status, "Free API, 1000 req/month")
     except ImportError:
         table.add_row("huggingface", "✗ Not installed", "pip install requests")
     
     # Check Ollama
-    table.add_row("ollama", "⚠ Check locally", "Local LLM (install from ollama.ai)")
+    try:
+        import requests
+        ollama_resp = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if ollama_resp.status_code == 200:
+            models = ollama_resp.json().get("models", [])
+            model_names = [m.get("name", "?") for m in models[:3]]
+            model_info = ", ".join(model_names) if model_names else "no models"
+            table.add_row("ollama", f"✓ Running ({model_info})", "Local LLM (free, offline)")
+        else:
+            table.add_row("ollama", "⚠ Running (no models)", "Pull with: ollama pull llama3")
+    except Exception:
+        table.add_row("ollama", "✗ Not running", "Start with: ollama serve")
     
     # Check Google Free
     try:
-        import googletrans
-        table.add_row("googlefree", "✓ Available", "Free (unofficial API)")
-    except ImportError:
+        # Don't import googletrans directly - it has httpcore compatibility issues
+        # Just check if the package is installed
+        import importlib.util
+        spec = importlib.util.find_spec("googletrans")
+        if spec is not None:
+            table.add_row("googlefree", "⚠ Installed (may have issues)", "googletrans has httpcore conflicts")
+        else:
+            table.add_row("googlefree", "✗ Not installed", "pip install googletrans==4.0.0rc1")
+    except Exception:
         table.add_row("googlefree", "✗ Not installed", "pip install googletrans==4.0.0rc1")
     
     # Check DeepSeek

@@ -160,12 +160,16 @@ class Translator(ABC):
 
 
 class DummyTranslator(Translator):
-    """A dummy translator for testing.
+    """A dummy translator for testing with glossary-enhanced output.
+    
+    This translator applies glossary replacements and adds a [TRANSLATED] prefix.
+    It's useful for testing the pipeline without API calls while still showing
+    that glossary terms are being applied correctly.
     
     Modes:
+    - 'prefix': Apply glossary + add [TRANSLATED] prefix (default)
     - 'echo': Return the input unchanged
     - 'upper': Return uppercase version
-    - 'prefix': Add [TRANSLATED] prefix
     - 'reverse': Reverse the text (for debugging)
     """
     
@@ -182,31 +186,123 @@ class DummyTranslator(Translator):
         context: TranslationContext | None = None,
         num_candidates: int = 1,
     ) -> TranslationResult:
+        terms_used = []
+        
         if self.mode == "echo":
             translated = text
         elif self.mode == "upper":
             translated = text.upper()
         elif self.mode == "reverse":
             translated = text[::-1]
-        else:  # prefix
-            translated = f"[TRANSLATED] {text}"
+        else:  # prefix - apply glossary terms first
+            translated = text
+            
+            # Apply glossary terms if context has glossary
+            if context and context.glossary:
+                import re
+                entries = sorted(context.glossary.entries, key=lambda e: len(e.source), reverse=True)
+                for entry in entries:
+                    pattern = re.compile(rf'\b{re.escape(entry.source)}\b', re.IGNORECASE)
+                    if pattern.search(translated):
+                        def replace_with_case(match):
+                            matched = match.group(0)
+                            target = entry.target
+                            if matched[0].isupper():
+                                target = target[0].upper() + target[1:]
+                            return target
+                        translated = pattern.sub(replace_with_case, translated)
+                        terms_used.append(entry.source)
+            
+            translated = f"[TRANSLATED] {translated}"
         
         return TranslationResult(
             text=translated,
             source_text=text,
             metadata={"translator": self.name, "mode": self.mode},
+            glossary_terms_used=terms_used,
         )
 
 
 class DictionaryTranslator(Translator):
-    """Offline translator using only glossary lookups.
+    """Offline translator using glossary lookups and basic word translation.
     
-    This translator replaces known terms from the glossary
-    but leaves unknown text unchanged. Useful as:
+    This translator:
+    1. Applies glossary term replacements (priority)
+    2. Uses a built-in dictionary of common English→French words
+    3. Leaves truly unknown words unchanged
+    
+    Useful as:
     - A fallback when API-based translators fail
     - A baseline for ablation studies
+    - Offline translation capability
     - Testing glossary coverage
     """
+    
+    # Extended built-in dictionary for common academic/scientific terms
+    BASIC_DICT = {
+        # Articles & determiners
+        'the': 'le', 'a': 'un', 'an': 'un', 'this': 'ce', 'that': 'ce',
+        'these': 'ces', 'those': 'ces', 'some': 'quelques', 'any': 'aucun',
+        
+        # Pronouns
+        'i': 'je', 'you': 'vous', 'he': 'il', 'she': 'elle', 'it': 'il',
+        'we': 'nous', 'they': 'ils', 'me': 'moi', 'him': 'lui', 'her': 'elle',
+        
+        # Common verbs
+        'is': 'est', 'are': 'sont', 'was': 'était', 'were': 'étaient',
+        'be': 'être', 'been': 'été', 'being': 'étant', 'have': 'avoir',
+        'has': 'a', 'had': 'avait', 'do': 'faire', 'does': 'fait',
+        'will': 'va', 'would': 'serait', 'can': 'peut', 'could': 'pourrait',
+        'should': 'devrait', 'may': 'peut', 'might': 'pourrait',
+        
+        # Academic/research terms
+        'study': 'étude', 'research': 'recherche', 'paper': 'article',
+        'method': 'méthode', 'result': 'résultat', 'results': 'résultats',
+        'conclusion': 'conclusion', 'analysis': 'analyse', 'data': 'données',
+        'experiment': 'expérience', 'model': 'modèle', 'system': 'système',
+        'approach': 'approche', 'problem': 'problème', 'solution': 'solution',
+        'performance': 'performance', 'accuracy': 'précision', 'error': 'erreur',
+        'training': 'entraînement', 'testing': 'test', 'validation': 'validation',
+        
+        # Technical/ML terms
+        'machine': 'machine', 'learning': 'apprentissage', 'neural': 'neuronal',
+        'network': 'réseau', 'deep': 'profond', 'layer': 'couche',
+        'algorithm': 'algorithme', 'function': 'fonction', 'parameter': 'paramètre',
+        'optimization': 'optimisation', 'training': 'entraînement',
+        'prediction': 'prédiction', 'classification': 'classification',
+        'regression': 'régression', 'feature': 'caractéristique',
+        'input': 'entrée', 'output': 'sortie', 'weight': 'poids',
+        
+        # Connectors & prepositions
+        'and': 'et', 'or': 'ou', 'but': 'mais', 'with': 'avec',
+        'without': 'sans', 'for': 'pour', 'from': 'de', 'to': 'à',
+        'in': 'dans', 'on': 'sur', 'at': 'à', 'by': 'par',
+        'of': 'de', 'as': 'comme', 'than': 'que', 'if': 'si',
+        
+        # Adjectives
+        'new': 'nouveau', 'old': 'ancien', 'good': 'bon', 'bad': 'mauvais',
+        'high': 'élevé', 'low': 'faible', 'large': 'grand', 'small': 'petit',
+        'first': 'premier', 'last': 'dernier', 'best': 'meilleur', 'better': 'mieux',
+        'important': 'important', 'significant': 'significatif', 'different': 'différent',
+        'similar': 'similaire', 'same': 'même', 'other': 'autre', 'many': 'beaucoup',
+        'more': 'plus', 'most': 'plus', 'less': 'moins', 'few': 'peu',
+        
+        # Adverbs
+        'also': 'aussi', 'however': 'cependant', 'therefore': 'donc',
+        'thus': 'ainsi', 'then': 'alors', 'now': 'maintenant', 'here': 'ici',
+        'there': 'là', 'where': 'où', 'when': 'quand', 'how': 'comment',
+        'why': 'pourquoi', 'very': 'très', 'well': 'bien', 'only': 'seulement',
+        
+        # Nouns
+        'time': 'temps', 'year': 'année', 'way': 'manière', 'work': 'travail',
+        'world': 'monde', 'number': 'nombre', 'part': 'partie', 'case': 'cas',
+        'point': 'point', 'fact': 'fait', 'group': 'groupe', 'example': 'exemple',
+        'information': 'information', 'question': 'question', 'process': 'processus',
+        'section': 'section', 'figure': 'figure', 'table': 'tableau',
+        
+        # Questions
+        'what': 'quoi', 'which': 'lequel', 'who': 'qui',
+    }
     
     def __init__(self, glossary: Glossary | None = None):
         self.glossary = glossary
@@ -221,6 +317,8 @@ class DictionaryTranslator(Translator):
         context: TranslationContext | None = None,
         num_candidates: int = 1,
     ) -> TranslationResult:
+        import re
+        
         # Use context glossary if available, else use instance glossary
         glossary = None
         if context and context.glossary:
@@ -228,39 +326,51 @@ class DictionaryTranslator(Translator):
         elif self.glossary:
             glossary = self.glossary
         
-        if glossary is None:
-            return TranslationResult(
-                text=text,
-                source_text=text,
-                metadata={"translator": self.name, "warning": "no glossary provided"},
-            )
-        
-        # Find and replace glossary terms
         result = text
         terms_used = []
         
-        # Sort by length (longest first) to avoid partial replacements
-        entries = sorted(glossary.entries, key=lambda e: len(e.source), reverse=True)
+        # Step 1: Apply glossary terms first (priority)
+        if glossary:
+            entries = sorted(glossary.entries, key=lambda e: len(e.source), reverse=True)
+            
+            for entry in entries:
+                pattern = re.compile(rf'\b{re.escape(entry.source)}\b', re.IGNORECASE)
+                if pattern.search(result):
+                    def replace_with_case(match):
+                        matched = match.group(0)
+                        target = entry.target
+                        if matched[0].isupper():
+                            target = target[0].upper() + target[1:]
+                        return target
+                    
+                    result = pattern.sub(replace_with_case, result)
+                    terms_used.append(entry.source)
         
-        for entry in entries:
-            import re
-            pattern = re.compile(rf'\b{re.escape(entry.source)}\b', re.IGNORECASE)
-            if pattern.search(result):
-                # Preserve original case for first letter
-                def replace_with_case(match):
-                    matched = match.group(0)
-                    target = entry.target
-                    if matched[0].isupper():
-                        target = target[0].upper() + target[1:]
-                    return target
-                
-                result = pattern.sub(replace_with_case, result)
-                terms_used.append(entry.source)
+        # Step 2: Apply built-in dictionary for remaining words
+        def replace_word(match):
+            word = match.group(0)
+            lower_word = word.lower()
+            if lower_word in self.BASIC_DICT:
+                translated = self.BASIC_DICT[lower_word]
+                # Preserve case
+                if word[0].isupper():
+                    translated = translated[0].upper() + translated[1:]
+                if word.isupper():
+                    translated = translated.upper()
+                return translated
+            return word
+        
+        # Only replace whole words
+        result = re.sub(r'\b[a-zA-Z]+\b', replace_word, result)
         
         return TranslationResult(
             text=result,
             source_text=text,
-            metadata={"translator": self.name},
+            metadata={
+                "translator": self.name,
+                "glossary_terms": len(terms_used),
+                "method": "glossary+dictionary"
+            },
             glossary_terms_used=terms_used,
         )
 
@@ -326,6 +436,13 @@ def create_translator(backend: str, **kwargs) -> Translator:
         from scitrans_llms.translate.llm import AnthropicTranslator, LLMConfig
         config = kwargs.get("config") or LLMConfig(model=kwargs.get("model", "claude-3-sonnet-20240229"))
         return AnthropicTranslator(config=config, api_key=kwargs.get("api_key"))
+    
+    elif backend_lower in ("free", "free-cascade", "cascade"):
+        from scitrans_llms.translate.free_translator import FreeTranslator
+        return FreeTranslator(
+            cache_dir=kwargs.get("cache_dir"),
+            timeout=kwargs.get("timeout", 5.0)
+        )
     
     else:
         raise ValueError(f"Unknown translator backend: {backend}")

@@ -17,7 +17,7 @@ from scitrans_llms.ingest.pdf import (
     LayoutDetector,
     HeuristicLayoutDetector,
     extract_blocks,
-    SimpleBlock,
+    _LegacyBlock as SimpleBlock,  # Alias for backwards compatibility
 )
 
 __all__ = [
