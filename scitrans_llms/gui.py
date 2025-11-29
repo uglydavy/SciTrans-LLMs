@@ -793,13 +793,8 @@ def launch(port: int = 7860, share: bool = False):
                 finally:
                     translate_btn.props(remove='disable')
             
-            # Add translate button to left column after function is defined
-            with button_container:
-                translate_btn = ui.button(
-                    'Translate Document',
-                    icon='translate',
-                    on_click=start_translation
-                ).classes('w-full text-xs py-2 compact-text').props('color=primary')
+            # Assign handler to button after function is defined
+            translate_btn.on_click = start_translation
     
     async def render_glossary_panel():
         """Render the glossary management panel."""
