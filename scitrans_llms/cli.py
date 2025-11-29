@@ -685,6 +685,16 @@ def gui(
         console.print("  [dim]Or reinstall the package:[/] [cyan]pip install -e .[/]")
         raise typer.Exit(1)
     
+    # Check if we're in the project's venv
+    import sys
+    venv_path = Path(__file__).parent.parent / '.venv'
+    if not str(venv_path / 'bin' / 'python3') in sys.executable and not str(venv_path / 'Scripts' / 'python.exe') in sys.executable:
+        console.print("[yellow]⚠ Warning:[/] Not running from project virtual environment.")
+        console.print("[dim]For best results, activate the venv first:[/]")
+        console.print(f"  [cyan]source .venv/bin/activate[/]  # macOS/Linux")
+        console.print(f"  [cyan].venv\\Scripts\\activate[/]  # Windows")
+        console.print()
+    
     try:
         from scitrans_llms.gui import launch
         
