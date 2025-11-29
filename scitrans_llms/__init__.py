@@ -12,7 +12,7 @@ Author: SciTrans-LLMs Team
 License: MIT
 """
 
-__version__ = "0.2.0"
+__version__ = "0.1.0"
 
 from scitrans_llms.models import Document, Segment, Block, BlockType
 from scitrans_llms.pipeline import TranslationPipeline
