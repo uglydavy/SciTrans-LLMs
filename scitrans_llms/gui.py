@@ -607,12 +607,8 @@ def launch(port: int = 7860, share: bool = False):
                         placeholder='# Format: source_term, target_term\nneural network, réseau de neurones'
                     ).classes('w-full mono-font text-xs compact-text').props('rows=2')
                 
-                # Translate Button
-                translate_btn = ui.button(
-                    'Translate Document',
-                    icon='translate',
-                    on_click=start_translation
-                ).classes('w-full text-xs py-2 compact-text').props('color=primary')
+                # Button container - will be populated after function is defined
+                button_container = ui.column().classes('w-full')
             
             # RIGHT SIDE: Preview & Results
             with ui.column().classes('w-1/2 gap-2').style('overflow-y: hidden; max-height: 100%;'):
@@ -643,90 +639,94 @@ def launch(port: int = 7860, share: bool = False):
                         on_click=lambda: ui.download(preview_card._output_path) if hasattr(preview_card, '_output_path') else None
                     ).classes('w-full mt-2 text-xs compact-text').props('size=sm dense')
                     download_btn.visible = False
+            
+            # Define translation function after all UI elements are created
+            async def start_translation():
+                source_path = uploaded_file.get('path')
+                source_url = url_input.value.strip() if url_input.value and url_input.value.strip() else None
                 
-                # Translation function - proper async handling to prevent connection loss
-                async def start_translation():
-                    source_path = uploaded_file.get('path')
-                    source_url = url_input.value.strip() if url_input.value and url_input.value.strip() else None
+                if not source_path and not source_url:
+                    ui.notify('Please upload a file or provide a URL', type='warning')
+                    return
+                
+                # Disable button and show progress
+                translate_btn.props('disable')
+                progress_bar.visible = True
+                progress_label.visible = True
+                log_output.visible = True
+                result_status.set_text('Translating...')
+                result_status.classes(replace='text-xs text-center compact-text')
+                download_btn.visible = False
+                log_output.clear()
+                
+                try:
+                    # Build job
+                    job = TranslationJob(
+                        source_path=source_path,
+                        source_url=source_url,
+                        direction=direction.value,
+                        pages=pages_input.value,
+                        engine=engine_select.value,
+                        enable_masking=enable_masking.value,
+                        translate_figures=translate_figures.value,
+                        translate_tables=translate_tables.value,
+                        translate_equations=translate_equations.value,
+                        quality_passes=int(quality_passes.value),
+                        enable_reranking=enable_reranking.value,
+                        custom_glossary=glossary_input.value,
+                    )
                     
-                    if not source_path and not source_url:
-                        ui.notify('Please upload a file or provide a URL', type='warning')
-                        return
+                    # Progress callback
+                    def update_progress(msg: str, pct: float):
+                        progress_bar.value = pct
+                        progress_label.set_text(msg)
+                        log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
                     
-                    # Disable button and show progress
-                    translate_btn.props('disable')
-                    progress_bar.visible = True
-                    progress_label.visible = True
-                    log_output.visible = True
-                    result_status.set_text('Translating...')
-                    result_status.classes(replace='text-xs text-center compact-text')
-                    download_btn.visible = False
-                    log_output.clear()
+                    # Run translation in background task
+                    result = await run_translation(job, update_progress)
                     
-                    try:
-                        # Build job
-                        job = TranslationJob(
-                            source_path=source_path,
-                            source_url=source_url,
-                            direction=direction.value,
-                            pages=pages_input.value,
-                            engine=engine_select.value,
-                            enable_masking=enable_masking.value,
-                            translate_figures=translate_figures.value,
-                            translate_tables=translate_tables.value,
-                            translate_equations=translate_equations.value,
-                            quality_passes=int(quality_passes.value),
-                            enable_reranking=enable_reranking.value,
-                            custom_glossary=glossary_input.value,
-                        )
-                        
-                        # Progress callback - use ui.timer for updates to prevent blocking
-                        progress_updates = []
-                        
-                        def update_progress(msg: str, pct: float):
-                            progress_updates.append((msg, pct))
-                            # Update UI immediately
-                            progress_bar.value = pct
-                            progress_label.set_text(msg)
-                            log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
-                        
-                        # Run translation in background task
-                        result = await run_translation(job, update_progress)
-                        
-                        # Show result
-                        progress_bar.visible = False
-                        progress_label.visible = False
-                        
-                        if result.get('success'):
-                            result_status.set_text('✓ Translation Complete!')
-                            result_status.classes(replace='text-xs font-bold text-green-500 text-center compact-text')
-                            result_path.set_text(f"Saved to: {result.get('output_path')}")
-                            result_path.visible = True
-                            preview_card._output_path = result.get('output_path')
-                            download_btn.visible = True
-                            
-                            stats = result.get('stats', {})
-                            stats_text = f"Blocks: {stats.get('total_blocks', 0)} total, {stats.get('translated_blocks', 0)} translated"
-                            if stats.get('masks_applied'):
-                                stats_text += f", {stats.get('masks_applied')} masks applied"
-                            result_stats.set_text(stats_text)
-                            result_stats.visible = True
-                        else:
-                            result_status.set_text('✗ Translation Failed')
-                            result_status.classes(replace='text-xs font-bold text-red-500 text-center compact-text')
-                            result_path.set_text(f"Error: {result.get('error')}")
-                            result_path.visible = True
-                            result_stats.visible = False
+                    # Show result
+                    progress_bar.visible = False
+                    progress_label.visible = False
                     
-                    except Exception as ex:
-                        logger.exception("Translation error")
-                        result_status.set_text('✗ Translation Error')
-                        result_status.classes(replace='text-xs font-bold text-red-500 text-center compact-text')
-                        result_path.set_text(f"Error: {str(ex)}")
+                    if result.get('success'):
+                        result_status.set_text('✓ Translation Complete!')
+                        result_status.classes(replace='text-xs font-bold text-green-500 text-center compact-text')
+                        result_path.set_text(f"Saved to: {result.get('output_path')}")
                         result_path.visible = True
-                    
-                    finally:
-                        translate_btn.props(remove='disable')
+                        preview_card._output_path = result.get('output_path')
+                        download_btn.visible = True
+                        
+                        stats = result.get('stats', {})
+                        stats_text = f"Blocks: {stats.get('total_blocks', 0)} total, {stats.get('translated_blocks', 0)} translated"
+                        if stats.get('masks_applied'):
+                            stats_text += f", {stats.get('masks_applied')} masks applied"
+                        result_stats.set_text(stats_text)
+                        result_stats.visible = True
+                    else:
+                        result_status.set_text('✗ Translation Failed')
+                        result_status.classes(replace='text-xs font-bold text-red-500 text-center compact-text')
+                        result_path.set_text(f"Error: {result.get('error')}")
+                        result_path.visible = True
+                        result_stats.visible = False
+                
+                except Exception as ex:
+                    logger.exception("Translation error")
+                    result_status.set_text('✗ Translation Error')
+                    result_status.classes(replace='text-xs font-bold text-red-500 text-center compact-text')
+                    result_path.set_text(f"Error: {str(ex)}")
+                    result_path.visible = True
+                
+                finally:
+                    translate_btn.props(remove='disable')
+            
+            # Add translate button to left column after function is defined
+            with button_container:
+                translate_btn = ui.button(
+                    'Translate Document',
+                    icon='translate',
+                    on_click=start_translation
+                ).classes('w-full text-xs py-2 compact-text').props('color=primary')
     
     async def render_glossary_panel():
         """Render the glossary management panel."""
@@ -740,7 +740,7 @@ def launch(port: int = 7860, share: bool = False):
                     with ui.card().classes('w-full deepl-style compact-card'):
                         ui.label('Default Scientific Glossary').classes('text-xs font-semibold mb-2 compact-text')
                         ui.label(f'{len(default_glossary)} terms • English ↔ French').classes('text-xs opacity-70 mb-2 compact-text')
-                    
+                        
                         # Search
                         search_input = ui.input('Search terms...', on_change=lambda: filter_glossary()).props('dense clearable').classes('w-full mb-2 compact-text text-xs')
                         
@@ -772,7 +772,7 @@ def launch(port: int = 7860, share: bool = False):
                 with ui.column().classes('w-1/2 gap-2'):
                     with ui.card().classes('w-full deepl-style compact-card'):
                         ui.label('Create Custom Glossary').classes('text-xs font-semibold mb-2 compact-text')
-                    
+                        
                         # Format help
                         with ui.expansion('Format Guide', icon='help').classes('w-full mb-2 text-xs'):
                             ui.markdown('''
@@ -830,7 +830,7 @@ deep learning, apprentissage profond
                                         test_backend_options,
                                         value='free'
                                     ).classes('flex-grow text-xs compact-text').props('dense')
-                            
+                                
                                 async def run_test():
                                     test_output.set_content('Translating...')
                                     try:
@@ -898,26 +898,26 @@ deep learning, apprentissage profond
                     ui.label('CLI Reference').classes('text-lg font-semibold mb-4')
                     
                     ui.markdown('''
-**Available Commands:**
+                **Available Commands:**
 
-```bash
-# System info
-scitrans info
+                ```bash
+                # System info
+                scitrans info
 
-# Quick translation
-scitrans translate --text "Hello world" --backend free
+                # Quick translation
+                scitrans translate --text "Hello world" --backend free
 
-# Translate PDF
-scitrans translate --input paper.pdf --output translated.pdf --backend openai
+                # Translate PDF
+                scitrans translate --input paper.pdf --output translated.pdf --backend openai
 
-# API key management
-scitrans keys list
-scitrans keys set openai
-scitrans keys set deepseek
+                # API key management
+                scitrans keys list
+                scitrans keys set openai
+                scitrans keys set deepseek
 
-# Run experiments
-scitrans experiment --corpus ./corpus --output ./results
-```
+                # Run experiments
+                scitrans experiment --corpus ./corpus --output ./results
+                ```
                     ''').classes('mono-font')
             
             # Debug Info - hide personal info
@@ -1070,15 +1070,15 @@ scitrans experiment --corpus ./corpus --output ./results
                     with ui.card().classes('w-full deepl-style compact-card'):
                         ui.label('About').classes('text-xs font-semibold mb-2 compact-text')
                         ui.markdown('''
-**SciTrans-LLMs** v0.1.0
+                **SciTrans-LLMs** v0.1.0
 
-Scientific document translation:
-- Context-aware across pages
-- Layout-preserving PDF output
-- Terminology control
-- Quality optimization
+                Scientific document translation:
+                - Context-aware across pages
+                - Layout-preserving PDF output
+                - Terminology control
+                - Quality optimization
 
-**Focus:** English ↔ French bilingual translation.
+                **Focus:** English ↔ French bilingual translation.
                         ''').classes('text-xs compact-text')
     
     # Run the app
@@ -1086,7 +1086,7 @@ Scientific document translation:
     print("  SciTrans-LLMs GUI")
     print(f"  Starting on http://127.0.0.1:{port}")
     print(f"{'='*60}\n")
-    
+
     ui.run(
         host='127.0.0.1',
         port=port,
@@ -1095,7 +1095,3 @@ Scientific document translation:
         show=True,
         reload=False,
     )
-
-
-if __name__ == "__main__":
-    launch()
