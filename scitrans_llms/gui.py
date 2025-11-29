@@ -394,27 +394,58 @@ def launch(port: int = 7860, share: bool = False):
     
     .mono-font {
         font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-        font-size: 10px;
+        font-size: 13px;
     }
     
     body {
         overflow-x: hidden;
-        font-size: 12px;
+        font-size: 14px;
     }
     
     .main-container {
-        height: calc(100vh - 100px);
+        height: calc(100vh - 120px);
         overflow-y: hidden;
     }
     
     .compact-card {
-        padding: 10px !important;
+        padding: 16px !important;
         margin: 0 !important;
     }
     
     .compact-text {
-        font-size: 11px !important;
-        line-height: 1.3 !important;
+        font-size: 13px !important;
+        line-height: 1.5 !important;
+    }
+    
+    .upload-area {
+        position: relative;
+    }
+    
+    .upload-area input[type="file"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 10;
+    }
+    
+    .centered-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        height: calc(100vh - 140px);
+        overflow-y: auto;
+    }
+    
+    .no-scroll {
+        overflow: hidden !important;
     }
     """
     
@@ -498,12 +529,12 @@ def launch(port: int = 7860, share: bool = False):
         uploaded_file = {'path': None, 'name': None}
         
         # Main container - left/right split, fixed height, no scrolling
-        with ui.row().classes('w-full gap-3 p-3').style('height: calc(100vh - 100px); overflow: hidden;'):
+        with ui.row().classes('w-full gap-4 p-4').style('height: calc(100vh - 120px); overflow: hidden;'):
             # LEFT SIDE: Source & Settings
-            with ui.column().classes('w-1/2 gap-2').style('overflow-y: hidden; max-height: 100%;'):
+            with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                 # Source Document Card
                 with ui.card().classes('w-full deepl-style compact-card'):
-                    ui.label('Source Document').classes('text-xs font-semibold mb-2 compact-text')
+                    ui.label('Source Document').classes('text-sm font-semibold mb-3')
                     
                     with ui.tabs().classes('w-full').props('dense') as source_tabs:
                         upload_tab = ui.tab('upload', label='Upload', icon='upload_file')
@@ -523,26 +554,36 @@ def launch(port: int = 7860, share: bool = False):
                                     uploaded_file['path'] = file_path
                                     uploaded_file['name'] = file_name
                                     upload_label.set_text(f'✓ {file_name}')
-                                    upload_label.classes(replace='text-green-500 text-xs')
+                                    upload_label.classes(replace='text-green-500 text-sm font-medium')
                                     file_info.set_text(f'{file_name} ({file_path.stat().st_size / 1024:.1f} KB)')
                                     file_info.visible = True
+                                    
+                                    # Show preview info
+                                    preview_info.clear()
+                                    with preview_info:
+                                        ui.label('Document Preview').classes('text-sm font-semibold mb-2')
+                                        ui.label(f'File: {file_name}').classes('text-sm')
+                                        ui.label(f'Size: {file_path.stat().st_size / 1024:.1f} KB').classes('text-xs opacity-70')
+                                    preview_info.visible = True
+                                    
                                     ui.notify(f'File uploaded: {file_name}', type='positive')
                                 except Exception as ex:
                                     logger.exception("Upload error")
                                     ui.notify(f'Upload error: {str(ex)}', type='negative')
                             
-                            # Clickable upload area - make entire area clickable
-                            with ui.column().classes('w-full items-center gap-1 p-4 upload-area').style('min-height: 80px; position: relative; cursor: pointer;') as upload_area:
-                                ui.icon('cloud_upload').classes('opacity-50').style('font-size: 1.5rem;')
-                                upload_label = ui.label('Click or drop PDF, DOCX, HTML here').classes('text-xs text-center compact-text')
-                                file_info = ui.label('').classes('text-xs opacity-60 compact-text')
+                            # Clickable upload area - make entire area clickable with drag-drop
+                            with ui.column().classes('w-full items-center gap-2 p-6 upload-area').style('min-height: 120px; position: relative; cursor: pointer; border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 8px;') as upload_area:
+                                ui.icon('cloud_upload').classes('opacity-60').style('font-size: 2.5rem;')
+                                upload_label = ui.label('Click anywhere or drag & drop files here').classes('text-sm text-center font-medium')
+                                ui.label('Supports: PDF, DOCX, HTML, TXT').classes('text-xs opacity-60 mt-1')
+                                file_info = ui.label('').classes('text-sm opacity-70 mt-2')
                                 file_info.visible = False
                                 
                                 # Invisible upload overlay covering entire area
                                 upload_comp = ui.upload(
                                     on_upload=handle_upload,
                                     auto_upload=True,
-                                ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt"').style('position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;')
+                                ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt" multiple=False').style('position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;')
                                 
                                 uploaded_file['_upload'] = upload_comp
                         
@@ -550,94 +591,102 @@ def launch(port: int = 7860, share: bool = False):
                             url_input = ui.input(
                                 'Paper URL',
                                 placeholder='https://arxiv.org/pdf/...'
-                            ).classes('w-full text-xs').props('dense')
-                            ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-xs opacity-60 mt-1')
+                            ).classes('w-full text-sm').props('dense')
+                            ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-xs opacity-60 mt-2')
             
                 # Translation Settings Card
                 with ui.card().classes('w-full deepl-style compact-card'):
-                    ui.label('Translation Settings').classes('text-xs font-semibold mb-2 compact-text')
+                    ui.label('Translation Settings').classes('text-sm font-semibold mb-3')
                     
                     # Direction
-                    with ui.row().classes('items-center gap-2 mb-2'):
-                        ui.label('Direction:').classes('font-medium text-xs w-16 compact-text')
+                    with ui.row().classes('items-center gap-3 mb-3'):
+                        ui.label('Direction:').classes('font-medium text-sm w-20')
                         direction = ui.toggle(
                             {'en-fr': 'EN → FR', 'fr-en': 'FR → EN'},
                             value='en-fr'
-                        ).classes('flex-grow text-xs')
+                        ).classes('flex-grow')
                     
                     # Pages
-                    with ui.row().classes('items-center gap-2 mb-2'):
-                        ui.label('Pages:').classes('font-medium text-xs w-16 compact-text')
-                        pages_input = ui.input(value='all', placeholder='all or 1-10').classes('flex-grow text-xs compact-text').props('dense')
+                    with ui.row().classes('items-center gap-3 mb-3'):
+                        ui.label('Pages:').classes('font-medium text-sm w-20')
+                        pages_input = ui.input(value='all', placeholder='all or 1-10').classes('flex-grow text-sm').props('dense')
                     
                     # Engine
-                    with ui.row().classes('items-center gap-2 mb-2'):
-                        ui.label('Engine:').classes('font-medium text-xs w-16 compact-text')
+                    with ui.row().classes('items-center gap-3 mb-3'):
+                        ui.label('Engine:').classes('font-medium text-sm w-20')
                         backends = get_available_backends()
                         engine_options = {b[0]: b[1] for b in backends if b[2]}
-                        engine_select = ui.select(engine_options, value='free').classes('flex-grow text-xs compact-text').props('dense')
+                        engine_select = ui.select(engine_options, value='free').classes('flex-grow text-sm').props('dense')
                     
                     # Quality passes as dropdown
-                    with ui.row().classes('items-center gap-2 mb-2'):
-                        ui.label('Quality:').classes('font-medium text-xs w-16 compact-text')
+                    with ui.row().classes('items-center gap-3 mb-3'):
+                        ui.label('Quality:').classes('font-medium text-sm w-20')
                         quality_passes = ui.select(
                             {1: '1 pass (fast)', 2: '2 passes', 3: '3 passes', 4: '4 passes', 5: '5 passes (best)'},
                             value=1
-                        ).classes('flex-grow text-xs compact-text').props('dense')
+                        ).classes('flex-grow text-sm').props('dense')
                     
-                    ui.separator().classes('my-2')
+                    ui.separator().classes('my-3')
                     
                     # Advanced options
-                    with ui.expansion('Advanced', icon='tune').classes('w-full text-xs'):
-                        enable_masking = ui.checkbox('Enable masking', value=True).classes('text-xs mb-1 compact-text')
-                        with ui.row().classes('gap-2 ml-4'):
-                            translate_equations = ui.checkbox('Equations', value=False).classes('text-xs compact-text')
-                            translate_tables = ui.checkbox('Tables', value=False).classes('text-xs compact-text')
-                            translate_figures = ui.checkbox('Captions', value=True).classes('text-xs compact-text')
-                        enable_reranking = ui.checkbox('Enable reranking', value=False).classes('text-xs mt-1 compact-text')
+                    with ui.expansion('Advanced Options', icon='tune').classes('w-full text-sm'):
+                        enable_masking = ui.checkbox('Enable masking', value=True).classes('text-sm mb-2')
+                        with ui.row().classes('gap-3 ml-4'):
+                            translate_equations = ui.checkbox('Equations', value=False).classes('text-sm')
+                            translate_tables = ui.checkbox('Tables', value=False).classes('text-sm')
+                            translate_figures = ui.checkbox('Captions', value=True).classes('text-sm')
+                        enable_reranking = ui.checkbox('Enable reranking', value=False).classes('text-sm mt-2')
                 
                 # Custom Glossary Card
                 with ui.card().classes('w-full deepl-style compact-card'):
-                    with ui.row().classes('items-center justify-between mb-1'):
-                        ui.label('Custom Glossary').classes('text-xs font-semibold compact-text')
+                    with ui.row().classes('items-center justify-between mb-2'):
+                        ui.label('Custom Glossary').classes('text-sm font-semibold')
                         ui.button('Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
                             '# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond'
-                        )).props('flat dense').classes('text-xs')
+                        )).props('flat dense').classes('text-sm')
                     glossary_input = ui.textarea(
                         placeholder='# Format: source_term, target_term\nneural network, réseau de neurones'
-                    ).classes('w-full mono-font text-xs compact-text').props('rows=2')
+                    ).classes('w-full mono-font text-sm').props('rows=3')
                 
-                # Button container - will be populated after function is defined
-                button_container = ui.column().classes('w-full')
+                # Translate button
+                translate_btn = ui.button(
+                    'Translate Document',
+                    icon='translate',
+                    on_click=lambda: None  # Will be set below
+                ).classes('w-full mt-2 text-base').props('color=primary')
             
             # RIGHT SIDE: Preview & Results
-            with ui.column().classes('w-1/2 gap-2').style('overflow-y: hidden; max-height: 100%;'):
+            with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                 # Preview/Progress Card
-                with ui.card().classes('w-full deepl-style compact-card').style('min-height: 300px;') as preview_card:
-                    ui.label('Preview & Progress').classes('text-xs font-semibold mb-2 compact-text')
+                with ui.card().classes('w-full deepl-style compact-card').style('min-height: 400px;') as preview_card:
+                    ui.label('Preview & Progress').classes('text-sm font-semibold mb-3')
+                    
+                    # Preview area (for source document info)
+                    preview_info = ui.column().classes('w-full mb-3')
+                    preview_info.visible = False
                     
                     # Progress bar (hidden initially)
-                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full mb-1')
+                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full mb-2')
                     progress_bar.visible = False
-                    progress_label = ui.label('').classes('text-xs text-center mb-2 compact-text')
+                    progress_label = ui.label('').classes('text-sm text-center mb-2 font-medium')
                     progress_label.visible = False
                     
-                    # Log output
-                    log_output = ui.log(max_lines=10).classes('w-full mono-font text-xs compact-text').style('height: 150px;')
+                    # Log output with timestamps
+                    log_output = ui.log(max_lines=15).classes('w-full mono-font text-sm').style('height: 200px; background: rgba(0,0,0,0.02); padding: 8px; border-radius: 4px;')
                     log_output.visible = False
                     
                     # Result area
-                    result_status = ui.label('Upload a document and click Translate').classes('text-xs text-center opacity-60 compact-text')
-                    result_path = ui.label('').classes('text-xs opacity-70 mt-1 compact-text')
+                    result_status = ui.label('Upload a document and click Translate to begin').classes('text-sm text-center opacity-60 mt-4')
+                    result_path = ui.label('').classes('text-sm opacity-70 mt-2')
                     result_path.visible = False
-                    result_stats = ui.label('').classes('text-xs opacity-70 mt-1 compact-text')
+                    result_stats = ui.label('').classes('text-sm opacity-70 mt-2')
                     result_stats.visible = False
                     
                     download_btn = ui.button(
                         'Download Translated PDF',
                         icon='download',
                         on_click=lambda: ui.download(preview_card._output_path) if hasattr(preview_card, '_output_path') else None
-                    ).classes('w-full mt-2 text-xs compact-text').props('dense')
+                    ).classes('w-full mt-3').props('color=primary')
                     download_btn.visible = False
             
             # Define translation function after all UI elements are created
@@ -651,13 +700,22 @@ def launch(port: int = 7860, share: bool = False):
                 
                 # Disable button and show progress
                 translate_btn.props('disable')
+                translate_btn.set_text('Translating...')
                 progress_bar.visible = True
                 progress_label.visible = True
                 log_output.visible = True
                 result_status.set_text('Translating...')
-                result_status.classes(replace='text-xs text-center compact-text')
+                result_status.classes(replace='text-sm text-center font-medium')
                 download_btn.visible = False
                 log_output.clear()
+                
+                # Initial log message
+                timestamp = datetime.now().strftime('%H:%M:%S')
+                log_output.push(f"[{timestamp}] Translation started")
+                if source_path:
+                    log_output.push(f"[{timestamp}] Source: {uploaded_file.get('name', 'Unknown')}")
+                if source_url:
+                    log_output.push(f"[{timestamp}] Source URL: {source_url}")
                 
                 try:
                     # Build job
@@ -676,11 +734,13 @@ def launch(port: int = 7860, share: bool = False):
                         custom_glossary=glossary_input.value,
                     )
                     
-                    # Progress callback
+                    # Progress callback with timestamps
                     def update_progress(msg: str, pct: float):
+                        timestamp = datetime.now().strftime('%H:%M:%S')
                         progress_bar.value = pct
-                        progress_label.set_text(msg)
-                        log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+                        progress_label.set_text(f"{int(pct * 100)}% - {msg}")
+                        log_output.push(f"[{timestamp}] {msg}")
+                        ui.run_javascript('window.scrollTo(0, document.body.scrollHeight);', respond=False)
                     
                     # Run translation in background task
                     result = await run_translation(job, update_progress)
@@ -688,14 +748,27 @@ def launch(port: int = 7860, share: bool = False):
                     # Show result
                     progress_bar.visible = False
                     progress_label.visible = False
+                    translate_btn.props(remove='disable')
+                    translate_btn.set_text('Translate Document')
                     
                     if result.get('success'):
+                        timestamp = datetime.now().strftime('%H:%M:%S')
+                        log_output.push(f"[{timestamp}] ✓ Translation completed successfully!")
                         result_status.set_text('✓ Translation Complete!')
-                        result_status.classes(replace='text-xs font-bold text-green-500 text-center compact-text')
+                        result_status.classes(replace='text-sm font-bold text-green-500 text-center')
                         result_path.set_text(f"Saved to: {result.get('output_path')}")
                         result_path.visible = True
                         preview_card._output_path = result.get('output_path')
                         download_btn.visible = True
+                        
+                        # Show stats if available
+                        if result.get('stats'):
+                            stats = result.get('stats')
+                            stats_text = f"Blocks: {stats.get('total_blocks', 'N/A')}, "
+                            stats_text += f"Translated: {stats.get('translated_blocks', 'N/A')}, "
+                            stats_text += f"Time: {stats.get('duration', 'N/A')}s"
+                            result_stats.set_text(stats_text)
+                            result_stats.visible = True
                         
                         stats = result.get('stats', {})
                         stats_text = f"Blocks: {stats.get('total_blocks', 0)} total, {stats.get('translated_blocks', 0)} translated"
@@ -769,9 +842,9 @@ def launch(port: int = 7860, share: bool = False):
                             glossary_table.rows = filtered
                 
                 # Right - Custom glossary
-                with ui.column().classes('w-1/2 gap-2'):
+                with ui.column().classes('w-1/2 gap-3'):
                     with ui.card().classes('w-full deepl-style compact-card'):
-                        ui.label('Create Custom Glossary').classes('text-xs font-semibold mb-2 compact-text')
+                        ui.label('Create Custom Glossary').classes('text-sm font-semibold mb-3')
                         
                         # Format help
                         with ui.expansion('Format Guide', icon='help').classes('w-full mb-2 text-xs'):
@@ -796,7 +869,7 @@ deep learning, apprentissage profond
     
     async def render_developer_panel():
         """Render the developer tools panel."""
-        with ui.tabs().classes('w-full text-xs').props('dense') as dev_tabs:
+        with ui.tabs().classes('w-full text-sm').props('dense') as dev_tabs:
             testing_tab = ui.tab('testing', label='Testing', icon='science')
             logs_tab = ui.tab('logs', label='Logs', icon='article')
             cli_tab = ui.tab('cli', label='CLI', icon='terminal')
@@ -804,9 +877,9 @@ deep learning, apprentissage profond
         
         with ui.tab_panels(dev_tabs, value=testing_tab).classes('w-full'):
             # Testing Ground
-            with ui.tab_panel(testing_tab).classes('p-3'):
+            with ui.tab_panel(testing_tab).classes('p-4'):
                 # Centered container
-                with ui.column().classes('w-full max-w-5xl mx-auto gap-2').style('height: calc(100vh - 140px); overflow-y: hidden;'):
+                with ui.column().classes('w-full max-w-6xl mx-auto gap-3').style('height: calc(100vh - 140px); overflow-y: auto;'):
                     with ui.row().classes('w-full gap-3'):
                         # Left - Test input
                         with ui.column().classes('w-1/2 gap-2'):
@@ -876,8 +949,8 @@ deep learning, apprentissage profond
                                     ui.button('Rerank').props('flat dense').classes('text-xs')
             
             # Logs panel
-            with ui.tab_panel(logs_tab).classes('p-3'):
-                with ui.column().classes('w-full max-w-5xl mx-auto gap-2'):
+            with ui.tab_panel(logs_tab).classes('p-4'):
+                with ui.column().classes('w-full max-w-6xl mx-auto gap-3'):
                     with ui.card().classes('w-full deepl-style compact-card'):
                         with ui.row().classes('justify-between items-center mb-2'):
                             ui.label('System Logs').classes('text-xs font-semibold compact-text')
@@ -893,9 +966,10 @@ deep learning, apprentissage profond
                         log_viewer.push('[INFO] Available backends: free, dictionary')
             
             # CLI Commands
-            with ui.tab_panel(cli_tab).classes('p-6'):
-                with ui.card().classes('w-full'):
-                    ui.label('CLI Reference').classes('text-lg font-semibold mb-4')
+            with ui.tab_panel(cli_tab).classes('p-4'):
+                with ui.column().classes('w-full max-w-4xl mx-auto'):
+                    with ui.card().classes('w-full deepl-style compact-card'):
+                        ui.label('CLI Reference').classes('text-lg font-semibold mb-4')
                     
                     ui.markdown('''
                 **Available Commands:**
@@ -921,8 +995,8 @@ deep learning, apprentissage profond
                     ''').classes('mono-font')
             
             # Debug Info - hide personal info
-            with ui.tab_panel(debug_tab).classes('p-3'):
-                with ui.column().classes('w-full max-w-5xl mx-auto gap-2'):
+            with ui.tab_panel(debug_tab).classes('p-4'):
+                with ui.column().classes('w-full max-w-6xl mx-auto gap-3'):
                     with ui.row().classes('w-full gap-3'):
                         with ui.column().classes('w-1/2 gap-2'):
                             with ui.card().classes('w-full deepl-style compact-card'):
