@@ -78,6 +78,7 @@ def launch(port: int = 7860, share: bool = False):
     
     # Available backends
     def get_available_backends():
+        """Return list of available translation backends with human labels."""
         backends = [
             ("free", "Free (Lingva/LibreTranslate)", True),
             ("dictionary", "Dictionary Only", True),
@@ -91,7 +92,7 @@ def launch(port: int = 7860, share: bool = False):
             if resp.status_code == 200:
                 models = resp.json().get("models", [])
                 if models:
-                    model_name = models[0].get('name', 'local') if models else 'local'
+                    model_name = models[0].get("name", "local")
                     backends.append(("ollama", f"Ollama ({model_name})", True))
                 else:
                     backends.append(("ollama", "Ollama (no models)", False))
@@ -125,6 +126,7 @@ def launch(port: int = 7860, share: bool = False):
             backends.append(("openai", "OpenAI GPT-4 (no key)", False))
         
         # DeepSeek
+        # DeepSeek
         if km.get_key("deepseek"):
             backends.append(("deepseek", "DeepSeek (cheap)", True))
         else:
@@ -139,7 +141,6 @@ def launch(port: int = 7860, share: bool = False):
                 backends.append(("anthropic", "Claude (no key)", False))
         except Exception:
             backends.append(("anthropic", "Claude (not installed)", False))
-        
         return backends
     
     # =========================================================================
@@ -399,7 +400,7 @@ def launch(port: int = 7860, share: bool = False):
     
     body {
         overflow-x: hidden;
-        font-size: 14px;
+        font-size: 16px !important;
     }
     
     .main-container {
@@ -408,13 +409,24 @@ def launch(port: int = 7860, share: bool = False):
     }
     
     .compact-card {
-        padding: 16px !important;
+        padding: 20px !important;
         margin: 0 !important;
     }
     
     .compact-text {
-        font-size: 13px !important;
-        line-height: 1.5 !important;
+        font-size: 15px !important;
+        line-height: 1.6 !important;
+    }
+    
+    /* Center all content */
+    .centered-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
     }
     
     .upload-area {
@@ -451,9 +463,25 @@ def launch(port: int = 7860, share: bool = False):
     
     @ui.page('/')
     async def main_page():
-        # Theme toggle state
+        # Theme toggle state - follow system preference
+        import sys
+        import platform
+        # Detect system dark mode preference
+        try:
+            if platform.system() == 'Darwin':  # macOS
+                import subprocess
+                result = subprocess.run(['defaults', 'read', '-g', 'AppleInterfaceStyle'], 
+                                      capture_output=True, text=True, timeout=1)
+                system_prefers_dark = 'Dark' in result.stdout
+            else:
+                # Default to dark for other systems or if detection fails
+                system_prefers_dark = True
+        except:
+            system_prefers_dark = True
+        
         dark = ui.dark_mode()
-        dark.value = state.dark_mode
+        dark.value = system_prefers_dark
+        state.dark_mode = system_prefers_dark
         
         # Add custom styles
         ui.add_head_html(f'<style>{CUSTOM_CSS}</style>')
@@ -534,16 +562,17 @@ def launch(port: int = 7860, share: bool = False):
             with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                 # Source Document Card
                 with ui.card().classes('w-full deepl-style compact-card'):
-                    ui.label('Source Document').classes('text-sm font-semibold mb-3')
+                    ui.label('Source Document').classes('text-base font-semibold mb-4')
                     
                     with ui.tabs().classes('w-full').props('dense') as source_tabs:
                         upload_tab = ui.tab('upload', label='Upload', icon='upload_file')
                         url_tab = ui.tab('url', label='URL', icon='link')
                     
                     with ui.tab_panels(source_tabs, value=upload_tab).classes('w-full'):
+                        # -------- Upload from local file --------
                         with ui.tab_panel(upload_tab):
-                            # File upload handler
                             async def handle_upload(e):
+                                """Handle file upload from NiceGUI `ui.upload`."""
                                 try:
                                     file_obj = e.file
                                     file_name = file_obj.name
@@ -551,19 +580,31 @@ def launch(port: int = 7860, share: bool = False):
                                     temp_dir.mkdir(exist_ok=True)
                                     file_path = temp_dir / file_name
                                     await file_obj.save(file_path)
+                                    
                                     uploaded_file['path'] = file_path
                                     uploaded_file['name'] = file_name
-                                    upload_label.set_text(f'✓ {file_name}')
-                                    upload_label.classes(replace='text-green-500 text-sm font-medium')
-                                    file_info.set_text(f'{file_name} ({file_path.stat().st_size / 1024:.1f} KB)')
+
+                                    # Update labels
+                                    upload_label.text = f'✓ {file_name}'
+                                    upload_label.classes(replace='text-green-600 text-base font-semibold')
+                                    file_info.text = f'{file_name} ({file_path.stat().st_size / 1024:.1f} KB)'
                                     file_info.visible = True
                                     
-                                    # Show preview info
+                                    # Show preview info on the right
                                     preview_info.clear()
                                     with preview_info:
-                                        ui.label('Document Preview').classes('text-sm font-semibold mb-2')
-                                        ui.label(f'File: {file_name}').classes('text-sm')
-                                        ui.label(f'Size: {file_path.stat().st_size / 1024:.1f} KB').classes('text-xs opacity-70')
+                                        ui.label('📄 Document Preview').classes('text-lg font-bold mb-3')
+                                        ui.label(f'File: {file_name}').classes('text-base mb-2')
+                                        ui.label(f'Size: {file_path.stat().st_size / 1024:.1f} KB').classes('text-sm opacity-70')
+                                        if file_path.suffix.lower() == '.pdf':
+                                            try:
+                                                import fitz
+                                                doc = fitz.open(str(file_path))
+                                                page_count = len(doc)
+                                                ui.label(f'Pages: {page_count}').classes('text-sm opacity-70 mt-1')
+                                                doc.close()
+                                            except:
+                                                pass
                                     preview_info.visible = True
                                     
                                     ui.notify(f'File uploaded: {file_name}', type='positive')
@@ -571,122 +612,126 @@ def launch(port: int = 7860, share: bool = False):
                                     logger.exception("Upload error")
                                     ui.notify(f'Upload error: {str(ex)}', type='negative')
                             
-                            # Clickable upload area - make entire area clickable with drag-drop
-                            with ui.column().classes('w-full items-center gap-2 p-6 upload-area').style('min-height: 120px; position: relative; cursor: pointer; border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 8px;') as upload_area:
-                                ui.icon('cloud_upload').classes('opacity-60').style('font-size: 2.5rem;')
-                                upload_label = ui.label('Click anywhere or drag & drop files here').classes('text-sm text-center font-medium')
-                                ui.label('Supports: PDF, DOCX, HTML, TXT').classes('text-xs opacity-60 mt-1')
-                                file_info = ui.label('').classes('text-sm opacity-70 mt-2')
+                            # Fully clickable upload area with drag-drop
+                            with ui.column().classes('w-full items-center gap-3 p-8').style('min-height: 160px; position: relative; cursor: pointer; border: 2px dashed rgba(99, 102, 241, 0.4); border-radius: 12px; background: rgba(99, 102, 241, 0.02);') as upload_container:
+                                ui.icon('cloud_upload').classes('opacity-70').style('font-size: 3rem;')
+                                upload_label = ui.label('Click anywhere or drag & drop files here').classes('text-base text-center font-semibold')
+                                ui.label('Supports: PDF, DOCX, HTML, TXT').classes('text-sm opacity-70 mt-1')
+                                file_info = ui.label('').classes('text-base opacity-80 mt-3 font-medium')
                                 file_info.visible = False
                                 
-                                # Invisible upload overlay covering entire area
-                                upload_comp = ui.upload(
+                                # Invisible upload covering entire area
+                                upload_widget = ui.upload(
                                     on_upload=handle_upload,
                                     auto_upload=True,
                                 ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt" multiple=False').style('position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;')
                                 
-                                uploaded_file['_upload'] = upload_comp
+                                # Make container clickable
+                                def click_upload():
+                                    upload_widget.run_method('click')
+                                upload_container.on('click', click_upload)
                         
+                        # -------- Download from URL --------
                         with ui.tab_panel(url_tab):
                             url_input = ui.input(
                                 'Paper URL',
                                 placeholder='https://arxiv.org/pdf/...'
-                            ).classes('w-full text-sm').props('dense')
-                            ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-xs opacity-60 mt-2')
+                            ).classes('w-full text-base')
+                            ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-sm opacity-70 mt-3')
             
                 # Translation Settings Card
                 with ui.card().classes('w-full deepl-style compact-card'):
-                    ui.label('Translation Settings').classes('text-sm font-semibold mb-3')
+                    ui.label('Translation Settings').classes('text-base font-semibold mb-4')
                     
                     # Direction
-                    with ui.row().classes('items-center gap-3 mb-3'):
-                        ui.label('Direction:').classes('font-medium text-sm w-20')
+                    with ui.row().classes('items-center gap-4 mb-4'):
+                        ui.label('Direction:').classes('font-medium text-base w-24')
                         direction = ui.toggle(
                             {'en-fr': 'EN → FR', 'fr-en': 'FR → EN'},
                             value='en-fr'
-                        ).classes('flex-grow')
+                        ).classes('flex-grow text-base')
                     
                     # Pages
-                    with ui.row().classes('items-center gap-3 mb-3'):
-                        ui.label('Pages:').classes('font-medium text-sm w-20')
-                        pages_input = ui.input(value='all', placeholder='all or 1-10').classes('flex-grow text-sm').props('dense')
+                    with ui.row().classes('items-center gap-4 mb-4'):
+                        ui.label('Pages:').classes('font-medium text-base w-24')
+                        pages_input = ui.input(value='all', placeholder='all or 1-10').classes('flex-grow text-base')
                     
                     # Engine
-                    with ui.row().classes('items-center gap-3 mb-3'):
-                        ui.label('Engine:').classes('font-medium text-sm w-20')
+                    with ui.row().classes('items-center gap-4 mb-4'):
+                        ui.label('Engine:').classes('font-medium text-base w-24')
                         backends = get_available_backends()
                         engine_options = {b[0]: b[1] for b in backends if b[2]}
-                        engine_select = ui.select(engine_options, value='free').classes('flex-grow text-sm').props('dense')
+                        engine_select = ui.select(engine_options, value='free').classes('flex-grow text-base')
                     
                     # Quality passes as dropdown
-                    with ui.row().classes('items-center gap-3 mb-3'):
-                        ui.label('Quality:').classes('font-medium text-sm w-20')
+                    with ui.row().classes('items-center gap-4 mb-4'):
+                        ui.label('Quality:').classes('font-medium text-base w-24')
                         quality_passes = ui.select(
                             {1: '1 pass (fast)', 2: '2 passes', 3: '3 passes', 4: '4 passes', 5: '5 passes (best)'},
                             value=1
-                        ).classes('flex-grow text-sm').props('dense')
+                        ).classes('flex-grow text-base')
                     
-                    ui.separator().classes('my-3')
+                    ui.separator().classes('my-4')
                     
                     # Advanced options
-                    with ui.expansion('Advanced Options', icon='tune').classes('w-full text-sm'):
-                        enable_masking = ui.checkbox('Enable masking', value=True).classes('text-sm mb-2')
-                        with ui.row().classes('gap-3 ml-4'):
-                            translate_equations = ui.checkbox('Equations', value=False).classes('text-sm')
-                            translate_tables = ui.checkbox('Tables', value=False).classes('text-sm')
-                            translate_figures = ui.checkbox('Captions', value=True).classes('text-sm')
-                        enable_reranking = ui.checkbox('Enable reranking', value=False).classes('text-sm mt-2')
+                    with ui.expansion('Advanced Options', icon='tune').classes('w-full text-base'):
+                        enable_masking = ui.checkbox('Enable masking', value=True).classes('text-base mb-3')
+                        with ui.row().classes('gap-4 ml-6'):
+                            translate_equations = ui.checkbox('Equations', value=False).classes('text-base')
+                            translate_tables = ui.checkbox('Tables', value=False).classes('text-base')
+                            translate_figures = ui.checkbox('Captions', value=True).classes('text-base')
+                        enable_reranking = ui.checkbox('Enable reranking', value=False).classes('text-base mt-3')
                 
                 # Custom Glossary Card
                 with ui.card().classes('w-full deepl-style compact-card'):
-                    with ui.row().classes('items-center justify-between mb-2'):
-                        ui.label('Custom Glossary').classes('text-sm font-semibold')
+                    with ui.row().classes('items-center justify-between mb-3'):
+                        ui.label('Custom Glossary').classes('text-base font-semibold')
                         ui.button('Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
                             '# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond'
-                        )).props('flat dense').classes('text-sm')
+                        )).props('flat dense').classes('text-base')
                     glossary_input = ui.textarea(
                         placeholder='# Format: source_term, target_term\nneural network, réseau de neurones'
-                    ).classes('w-full mono-font text-sm').props('rows=3')
+                    ).classes('w-full mono-font text-base').props('rows=4')
                 
                 # Translate button
                 translate_btn = ui.button(
                     'Translate Document',
                     icon='translate',
                     on_click=lambda: None  # Will be set below
-                ).classes('w-full mt-2 text-base').props('color=primary')
+                ).classes('w-full mt-4 text-lg py-3').props('color=primary')
             
             # RIGHT SIDE: Preview & Results
-            with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
+            with ui.column().classes('w-1/2 gap-4').style('overflow-y: auto; max-height: 100%;'):
                 # Preview/Progress Card
-                with ui.card().classes('w-full deepl-style compact-card').style('min-height: 400px;') as preview_card:
-                    ui.label('Preview & Progress').classes('text-sm font-semibold mb-3')
+                with ui.card().classes('w-full deepl-style compact-card').style('min-height: 500px;') as preview_card:
+                    ui.label('Preview & Progress').classes('text-base font-semibold mb-4')
                     
                     # Preview area (for source document info)
-                    preview_info = ui.column().classes('w-full mb-3')
+                    preview_info = ui.column().classes('w-full mb-4 p-3').style('background: rgba(99, 102, 241, 0.05); border-radius: 8px;')
                     preview_info.visible = False
                     
                     # Progress bar (hidden initially)
-                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full mb-2')
+                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full mb-3').style('height: 8px;')
                     progress_bar.visible = False
-                    progress_label = ui.label('').classes('text-sm text-center mb-2 font-medium')
+                    progress_label = ui.label('').classes('text-base text-center mb-3 font-semibold')
                     progress_label.visible = False
                     
                     # Log output with timestamps
-                    log_output = ui.log(max_lines=15).classes('w-full mono-font text-sm').style('height: 200px; background: rgba(0,0,0,0.02); padding: 8px; border-radius: 4px;')
+                    log_output = ui.log(max_lines=20).classes('w-full mono-font text-base').style('height: 250px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1);')
                     log_output.visible = False
                     
                     # Result area
-                    result_status = ui.label('Upload a document and click Translate to begin').classes('text-sm text-center opacity-60 mt-4')
-                    result_path = ui.label('').classes('text-sm opacity-70 mt-2')
+                    result_status = ui.label('Upload a document and click Translate to begin').classes('text-base text-center opacity-70 mt-6')
+                    result_path = ui.label('').classes('text-base opacity-80 mt-3')
                     result_path.visible = False
-                    result_stats = ui.label('').classes('text-sm opacity-70 mt-2')
+                    result_stats = ui.label('').classes('text-base opacity-80 mt-3')
                     result_stats.visible = False
                     
                     download_btn = ui.button(
                         'Download Translated PDF',
                         icon='download',
                         on_click=lambda: ui.download(preview_card._output_path) if hasattr(preview_card, '_output_path') else None
-                    ).classes('w-full mt-3').props('color=primary')
+                    ).classes('w-full mt-4 text-lg py-3').props('color=primary')
                     download_btn.visible = False
             
             # Define translation function after all UI elements are created
