@@ -433,7 +433,7 @@ def launch(port: int = 7860, share: bool = False):
         # =====================================================================
         with ui.header().classes('items-center justify-between px-4 py-2 hero-gradient'):
             with ui.row().classes('items-center gap-2'):
-                ui.icon('translate', size='md').classes('text-white')
+                ui.icon('translate').classes('text-white')
                 ui.label('SciTrans-LLMs').classes('text-lg font-bold text-white')
                 ui.badge('v0.1.0').classes('bg-white/20 text-white text-xs')
             
@@ -441,7 +441,7 @@ def launch(port: int = 7860, share: bool = False):
                 # Language indicator
                 with ui.row().classes('items-center gap-1 bg-white/10 rounded-full px-2 py-1'):
                     ui.label('EN').classes('text-white font-semibold text-xs')
-                    ui.icon('swap_horiz', size='sm').classes('text-white/70')
+                    ui.icon('swap_horiz').classes('text-white/70')
                     ui.label('FR').classes('text-white font-semibold text-xs')
                 
                 # Theme toggle
@@ -533,7 +533,7 @@ def launch(port: int = 7860, share: bool = False):
                             
                             # Clickable upload area - make entire area clickable
                             with ui.column().classes('w-full items-center gap-1 p-4 upload-area').style('min-height: 80px; position: relative; cursor: pointer;') as upload_area:
-                                ui.icon('cloud_upload', size='1.5rem').classes('opacity-50')
+                                ui.icon('cloud_upload').classes('opacity-50').style('font-size: 1.5rem;')
                                 upload_label = ui.label('Click or drop PDF, DOCX, HTML here').classes('text-xs text-center compact-text')
                                 file_info = ui.label('').classes('text-xs opacity-60 compact-text')
                                 file_info.visible = False
@@ -602,7 +602,7 @@ def launch(port: int = 7860, share: bool = False):
                         ui.label('Custom Glossary').classes('text-xs font-semibold compact-text')
                         ui.button('Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
                             '# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond'
-                        )).props('flat dense size=sm').classes('text-xs')
+                        )).props('flat dense').classes('text-xs')
                     glossary_input = ui.textarea(
                         placeholder='# Format: source_term, target_term\nneural network, réseau de neurones'
                     ).classes('w-full mono-font text-xs compact-text').props('rows=2')
@@ -637,7 +637,7 @@ def launch(port: int = 7860, share: bool = False):
                         'Download Translated PDF',
                         icon='download',
                         on_click=lambda: ui.download(preview_card._output_path) if hasattr(preview_card, '_output_path') else None
-                    ).classes('w-full mt-2 text-xs compact-text').props('size=sm dense')
+                    ).classes('w-full mt-2 text-xs compact-text').props('dense')
                     download_btn.visible = False
             
             # Define translation function after all UI elements are created
@@ -790,9 +790,9 @@ deep learning, apprentissage profond
                         ).classes('w-full mono-font text-xs compact-text').props('rows=8')
                         
                         with ui.row().classes('gap-2 mt-2'):
-                            ui.button('Save', icon='save', size='sm').props('color=primary dense').classes('text-xs')
-                            ui.button('Load', icon='upload_file', size='sm').props('dense').classes('text-xs')
-                            ui.button('Export', icon='download', size='sm').props('dense').classes('text-xs')
+                            ui.button('Save', icon='save').props('color=primary dense').classes('text-xs')
+                            ui.button('Load', icon='upload_file').props('dense').classes('text-xs')
+                            ui.button('Export', icon='download').props('dense').classes('text-xs')
     
     async def render_developer_panel():
         """Render the developer tools panel."""
@@ -870,10 +870,10 @@ deep learning, apprentissage profond
                                     ui.notify(f'Glossary: {len(glossary)} entries', type='positive')
                                 
                                 with ui.row().classes('gap-1 flex-wrap'):
-                                    ui.button('PDF', on_click=test_pdf_parser, size='sm').props('flat dense').classes('text-xs')
-                                    ui.button('Masking', on_click=test_masking, size='sm').props('flat dense').classes('text-xs')
-                                    ui.button('Glossary', on_click=test_glossary, size='sm').props('flat dense').classes('text-xs')
-                                    ui.button('Rerank', size='sm').props('flat dense').classes('text-xs')
+                                    ui.button('PDF', on_click=test_pdf_parser).props('flat dense').classes('text-xs')
+                                    ui.button('Masking', on_click=test_masking).props('flat dense').classes('text-xs')
+                                    ui.button('Glossary', on_click=test_glossary).props('flat dense').classes('text-xs')
+                                    ui.button('Rerank').props('flat dense').classes('text-xs')
             
             # Logs panel
             with ui.tab_panel(logs_tab).classes('p-3'):
@@ -882,8 +882,8 @@ deep learning, apprentissage profond
                         with ui.row().classes('justify-between items-center mb-2'):
                             ui.label('System Logs').classes('text-xs font-semibold compact-text')
                             with ui.row().classes('gap-1'):
-                                ui.button('Clear', icon='delete', size='sm').props('flat dense').classes('text-xs')
-                                ui.button('Export', icon='download', size='sm').props('flat dense').classes('text-xs')
+                                ui.button('Clear', icon='delete').props('flat dense').classes('text-xs')
+                                ui.button('Export', icon='download').props('flat dense').classes('text-xs')
                         
                         log_viewer = ui.log(max_lines=50).classes('w-full mono-font text-xs compact-text').style('height: calc(100vh - 200px); font-size: 10px;')
                         
@@ -1010,9 +1010,9 @@ deep learning, apprentissage profond
                                     ui.label(desc).classes('text-xs opacity-60 compact-text')
                                 
                                 if key_info.is_set:
-                                    ui.badge('Set', color='green', size='sm').props('outline')
+                                    ui.badge('Set', color='green').props('outline')
                                 else:
-                                    ui.badge('Not set', color='grey', size='sm').props('outline')
+                                    ui.badge('Not set', color='grey').props('outline')
                                 
                                 # Edit button
                                 def make_edit_handler(sid):
@@ -1021,17 +1021,17 @@ deep learning, apprentissage profond
                                             ui.label(f'Set {sid.title()} API Key').classes('text-xs font-semibold mb-2 compact-text')
                                             key_input = ui.input('API Key', password=True).classes('w-full text-xs compact-text').props('dense')
                                             with ui.row().classes('gap-2 mt-2'):
-                                                ui.button('Cancel', on_click=dialog.close, size='sm').props('flat dense').classes('text-xs')
+                                                ui.button('Cancel', on_click=dialog.close).props('flat dense').classes('text-xs')
                                                 def save_key():
                                                     if key_input.value:
                                                         km.set_key(sid, key_input.value)
                                                         ui.notify(f'{sid.title()} key saved', type='positive')
                                                         dialog.close()
-                                                ui.button('Save', on_click=save_key, size='sm').props('color=primary dense').classes('text-xs')
+                                                ui.button('Save', on_click=save_key).props('color=primary dense').classes('text-xs')
                                         dialog.open()
                                     return edit_key
                                 
-                                ui.button(icon='edit', on_click=make_edit_handler(service_id), size='sm').props('flat round dense').classes('text-xs')
+                                ui.button(icon='edit', on_click=make_edit_handler(service_id)).props('flat round dense').classes('text-xs')
                         
                         ui.separator().classes('my-2')
                         ui.label('Keys stored securely in system keychain or local config.').classes('text-xs opacity-50 compact-text')
