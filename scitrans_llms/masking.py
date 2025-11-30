@@ -126,7 +126,7 @@ class MaskConfig:
     mask_emails: bool = True
     mask_dois: bool = True
     mask_numbers_units: bool = False  # Often want these translated contextually
-    
+
     # Convenience aliases for GUI
     mask_equations: bool = True  # Alias covering all LaTeX math
     mask_code: bool = True  # Alias covering code blocks and inline
