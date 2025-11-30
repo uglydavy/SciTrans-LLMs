@@ -98,7 +98,7 @@ def launch(port: int = 7860, share: bool = False):
     gui_log_handler = None
     
     def set_global_log_callback(callback):
-        global global_log_callback, gui_log_handler
+        nonlocal global_log_callback, gui_log_handler
         global_log_callback = callback
         # Remove old handler if exists
         if gui_log_handler:
