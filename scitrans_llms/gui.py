@@ -529,6 +529,22 @@ def launch(port: int = 7860, share: bool = False):
         display: flex;
         flex-direction: column;
     }
+    
+    /* Force no scrolling on main content */
+    .q-page-container {
+        overflow: hidden !important;
+        height: calc(100vh - 120px) !important;
+    }
+    
+    .q-tab-panels {
+        overflow: hidden !important;
+        height: 100% !important;
+    }
+    
+    /* Fix scrolling in columns */
+    .overflow-y-auto {
+        max-height: 100% !important;
+    }
     """
     
     @ui.page('/')
@@ -697,33 +713,34 @@ def launch(port: int = 7860, share: bool = False):
                                     logger.exception("Upload error")
                                     ui.notify(f'Upload error: {str(ex)}', type='negative')
                             
-                            # Fully clickable upload area with drag-drop
-                            with ui.column().classes('w-full items-center gap-3 p-8').style('min-height: 160px; position: relative; cursor: pointer; border: 2px dashed rgba(99, 102, 241, 0.4); border-radius: 12px; background: rgba(99, 102, 241, 0.02);') as upload_container:
+                            # Upload area - use NiceGUI's built-in upload with visible button
+                            with ui.column().classes('w-full items-center gap-3 p-8').style('min-height: 160px; border: 2px dashed rgba(99, 102, 241, 0.4); border-radius: 12px; background: rgba(99, 102, 241, 0.02);'):
                                 ui.icon('cloud_upload').classes('opacity-70').style('font-size: 3rem;')
-                                upload_label = ui.label('Click anywhere or drag & drop files here').classes('text-base text-center font-semibold')
+                                upload_label = ui.label('Click button below or drag & drop files here').classes('text-base text-center font-semibold')
                                 ui.label('Supports: PDF, DOCX, HTML, TXT').classes('text-sm opacity-70 mt-1')
                                 file_info = ui.label('').classes('text-base opacity-80 mt-3 font-medium')
                                 file_info.visible = False
                                 
-                                # Upload widget - make it cover the entire area
+                                # Upload widget - visible and accessible
                                 upload_widget = ui.upload(
                                     on_upload=handle_upload,
                                     auto_upload=True,
                                 ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt" multiple=False')
-                                upload_widget.style('position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;')
+                                upload_widget.classes('w-full')
                                 
-                                # Make container clickable - trigger file picker
-                                def click_upload():
+                                # Make the upload area itself clickable by wrapping it
+                                def trigger_upload():
                                     try:
+                                        # Find the file input and trigger click
                                         upload_widget.run_method('click')
                                     except Exception as e:
-                                        logger.debug(f"Upload click: {e}")
-                                upload_container.on('click', click_upload)
+                                        logger.error(f"Upload trigger error: {e}")
+                                        # Fallback: show file picker dialog
+                                        ui.notify('Click the "Choose Files" button above to upload', type='info')
                                 
-                                # Also handle drag and drop
-                                def handle_drop(e):
-                                    logger.debug(f"Drop event: {e}")
-                                upload_container.on('drop', handle_drop)
+                                # Make the container trigger upload on click
+                                upload_container = ui.column().classes('w-full')
+                                upload_container.on('click', trigger_upload)
                         
                         # -------- Download from URL --------
                         with ui.tab_panel(url_tab):
@@ -922,11 +939,10 @@ def launch(port: int = 7860, share: bool = False):
                         glossary_context = ui.checkbox('Context-aware', value=True).classes('text-sm')
                         glossary_override = ui.checkbox('Override default', value=False).classes('text-sm')
                 
-                # Translate button
+                # Translate button - will be connected below
                 translate_btn = ui.button(
                     'Translate Document',
                     icon='translate',
-                    on_click=lambda: None  # Will be set below
                 ).classes('w-full mt-4 text-lg py-3').props('color=primary')
             
             # RIGHT SIDE: Preview & Results
@@ -1130,7 +1146,8 @@ def launch(port: int = 7860, share: bool = False):
                     translate_btn.props(remove='disable')
             
             # Assign handler to button after function is defined
-            translate_btn.on_click = start_translation
+            # Connect translate button - use on() method for async functions
+            translate_btn.on('click', start_translation)
     
     async def render_glossary_panel():
         """Render the glossary management panel."""
@@ -1740,14 +1757,6 @@ deep learning, apprentissage profond
                                 value='INFO',
                                 on_change=lambda e: logging.getLogger().setLevel(getattr(logging, e.value)) or ui.notify(f'Logging level set to {e.value}', type='info')
                             ).classes('text-xs compact-text').props('dense')
-                        
-                        # Output directory
-                        with ui.row().classes('items-center justify-between py-1'):
-                            ui.label('Output Directory').classes('text-xs compact-text')
-                            output_dir_input = ui.input(
-                                value=str(Path.home() / 'scitrans_output'),
-                                placeholder='Output directory path'
-                            ).classes('flex-grow text-xs compact-text').props('dense')
                         
                         def apply_settings():
                             """Apply all settings immediately."""
