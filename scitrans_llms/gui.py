@@ -530,20 +530,24 @@ def launch(port: int = 7860, share: bool = False):
         flex-direction: column;
     }
     
-    /* Force no scrolling on main content */
-    .q-page-container {
-        overflow: hidden !important;
-        height: calc(100vh - 120px) !important;
+    /* Main layout - ensure header stays visible */
+    .q-page {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
     }
     
-    .q-tab-panels {
-        overflow: hidden !important;
-        height: 100% !important;
+    /* Tab panels - allow internal scrolling but not page scroll */
+    .q-tab-panel {
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex: 1;
     }
     
     /* Fix scrolling in columns */
     .overflow-y-auto {
-        max-height: 100% !important;
+        max-height: 100%;
+        overflow-y: auto;
     }
     """
     
@@ -608,29 +612,29 @@ def launch(port: int = 7860, share: bool = False):
             developer_tab = ui.tab('developer', label='Developer', icon='code')
             settings_tab = ui.tab('settings', label='Settings', icon='settings')
         
-        with ui.tab_panels(tabs, value=translate_tab).classes('w-full flex-grow no-scroll-container').style('height: calc(100vh - 120px); overflow: hidden;'):
+        with ui.tab_panels(tabs, value=translate_tab).classes('w-full flex-grow').style('flex: 1; min-height: 0;'):
             # =================================================================
             # TRANSLATE TAB
             # =================================================================
-            with ui.tab_panel(translate_tab).classes('p-0 no-scroll-container').style('height: 100%; overflow: hidden;'):
+            with ui.tab_panel(translate_tab).classes('p-4'):
                 await render_translate_panel()
             
             # =================================================================
             # GLOSSARY TAB
             # =================================================================
-            with ui.tab_panel(glossary_tab).classes('p-6 no-scroll-container').style('height: 100%; overflow: hidden;'):
+            with ui.tab_panel(glossary_tab).classes('p-6'):
                 await render_glossary_panel()
             
             # =================================================================
             # DEVELOPER TAB
             # =================================================================
-            with ui.tab_panel(developer_tab).classes('p-0 no-scroll-container').style('height: 100%; overflow: hidden;'):
+            with ui.tab_panel(developer_tab).classes('p-4'):
                 await render_developer_panel()
             
             # =================================================================
             # SETTINGS TAB
             # =================================================================
-            with ui.tab_panel(settings_tab).classes('p-6 no-scroll-container').style('height: 100%; overflow: hidden;'):
+            with ui.tab_panel(settings_tab).classes('p-6'):
                 await render_settings_panel(km)
         
         # Footer
@@ -642,8 +646,8 @@ def launch(port: int = 7860, share: bool = False):
         # Job state containers
         uploaded_file = {'path': None, 'name': None}
         
-        # Main container - left/right split, fixed height, no scrolling, centered
-        with ui.row().classes('w-full gap-4 p-4 justify-center').style('height: calc(100vh - 120px); overflow: hidden; max-width: 1600px; margin: 0 auto;'):
+        # Main container - left/right split, centered, with proper scrolling
+        with ui.row().classes('w-full gap-4 p-4 justify-center').style('max-width: 1600px; margin: 0 auto;'):
             # LEFT SIDE: Source & Settings
             with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                 # Source Document Card
@@ -727,20 +731,6 @@ def launch(port: int = 7860, share: bool = False):
                                     auto_upload=True,
                                 ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt" multiple=False')
                                 upload_widget.classes('w-full')
-                                
-                                # Make the upload area itself clickable by wrapping it
-                                def trigger_upload():
-                                    try:
-                                        # Find the file input and trigger click
-                                        upload_widget.run_method('click')
-                                    except Exception as e:
-                                        logger.error(f"Upload trigger error: {e}")
-                                        # Fallback: show file picker dialog
-                                        ui.notify('Click the "Choose Files" button above to upload', type='info')
-                                
-                                # Make the container trigger upload on click
-                                upload_container = ui.column().classes('w-full')
-                                upload_container.on('click', trigger_upload)
                         
                         # -------- Download from URL --------
                         with ui.tab_panel(url_tab):
@@ -939,11 +929,12 @@ def launch(port: int = 7860, share: bool = False):
                         glossary_context = ui.checkbox('Context-aware', value=True).classes('text-sm')
                         glossary_override = ui.checkbox('Override default', value=False).classes('text-sm')
                 
-                # Translate button - will be connected below
+                # Translate button
                 translate_btn = ui.button(
                     'Translate Document',
                     icon='translate',
                 ).classes('w-full mt-4 text-lg py-3').props('color=primary')
+                translate_btn.visible = True
             
             # RIGHT SIDE: Preview & Results
             with ui.column().classes('w-1/2 gap-4').style('overflow-y: auto; max-height: 100%;'):
@@ -1147,7 +1138,8 @@ def launch(port: int = 7860, share: bool = False):
             
             # Assign handler to button after function is defined
             # Connect translate button - use on() method for async functions
-            translate_btn.on('click', start_translation)
+            # Connect translate button handler - use on_click for async functions
+            translate_btn.on_click = start_translation
     
     async def render_glossary_panel():
         """Render the glossary management panel."""
