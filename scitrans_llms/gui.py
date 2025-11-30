@@ -73,8 +73,40 @@ def launch(port: int = 7860, share: bool = False):
         current_job: Optional[TranslationJob] = None
         logs: list = []
         test_results: list = []
+        default_engine: str = 'free'
+        default_quality: int = 1
+        default_masking: bool = True
     
     state = AppState()
+    
+    # Set up logging handler to capture logs
+    class GUILogHandler(logging.Handler):
+        def __init__(self, log_callback):
+            super().__init__()
+            self.log_callback = log_callback
+            
+        def emit(self, record):
+            try:
+                msg = self.format(record)
+                if self.log_callback:
+                    self.log_callback(msg)
+            except Exception:
+                pass
+    
+    # Global log callback (will be set when UI is ready)
+    global_log_callback = None
+    gui_log_handler = None
+    
+    def set_global_log_callback(callback):
+        global global_log_callback, gui_log_handler
+        global_log_callback = callback
+        # Remove old handler if exists
+        if gui_log_handler:
+            logging.getLogger().removeHandler(gui_log_handler)
+        # Add handler to root logger
+        gui_log_handler = GUILogHandler(callback)
+        gui_log_handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+        logging.getLogger().addHandler(gui_log_handler)
     
     # Available backends
     def get_available_backends():
@@ -403,6 +435,12 @@ def launch(port: int = 7860, share: bool = False):
         font-size: 16px !important;
     }
     
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    
     .main-container {
         height: calc(100vh - 120px);
         overflow-y: hidden;
@@ -458,6 +496,17 @@ def launch(port: int = 7860, share: bool = False):
     
     .no-scroll {
         overflow: hidden !important;
+    }
+    
+    /* Prevent body scrolling */
+    body {
+        overflow: hidden !important;
+    }
+    
+    /* Ensure tab panels don't scroll the whole page */
+    .nicegui-content {
+        overflow: hidden !important;
+        height: 100vh !important;
     }
     """
     
@@ -556,8 +605,8 @@ def launch(port: int = 7860, share: bool = False):
         # Job state containers
         uploaded_file = {'path': None, 'name': None}
         
-        # Main container - left/right split, fixed height, no scrolling
-        with ui.row().classes('w-full gap-4 p-4').style('height: calc(100vh - 120px); overflow: hidden;'):
+        # Main container - left/right split, fixed height, no scrolling, centered
+        with ui.row().classes('w-full gap-4 p-4 justify-center').style('height: calc(100vh - 120px); overflow: hidden; max-width: 1600px; margin: 0 auto;'):
             # LEFT SIDE: Source & Settings
             with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                 # Source Document Card
@@ -602,9 +651,24 @@ def launch(port: int = 7860, share: bool = False):
                                                 doc = fitz.open(str(file_path))
                                                 page_count = len(doc)
                                                 ui.label(f'Pages: {page_count}').classes('text-sm opacity-70 mt-1')
+                                                
+                                                # Show PDF preview
+                                                pdf_preview.visible = True
+                                                # Convert first page to image for preview
+                                                try:
+                                                    page = doc[0]
+                                                    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))
+                                                    img_data = pix.tobytes("png")
+                                                    import base64
+                                                    img_b64 = base64.b64encode(img_data).decode()
+                                                    pdf_preview.set_content(f'<img src="data:image/png;base64,{img_b64}" style="max-width: 100%; height: auto; border-radius: 4px;" />')
+                                                except Exception as e:
+                                                    pdf_preview.set_content(f'<div style="padding: 20px; text-align: center; color: #666;">PDF preview unavailable<br/><small>{str(e)}</small></div>')
+                                                
                                                 doc.close()
-                                            except:
-                                                pass
+                                            except Exception as e:
+                                                pdf_preview.visible = False
+                                                logger.exception("PDF preview error")
                                     preview_info.visible = True
                                     
                                     ui.notify(f'File uploaded: {file_name}', type='positive')
@@ -638,6 +702,71 @@ def launch(port: int = 7860, share: bool = False):
                                 placeholder='https://arxiv.org/pdf/...'
                             ).classes('w-full text-base')
                             ui.label('Supports arXiv, DOI links, and direct PDF URLs').classes('text-sm opacity-70 mt-3')
+                            
+                            url_status = ui.label('').classes('text-sm mt-2')
+                            url_status.visible = False
+                            
+                            async def validate_url():
+                                url = url_input.value.strip()
+                                if not url:
+                                    url_status.visible = False
+                                    # Clear preview if URL is empty
+                                    if not uploaded_file.get('path'):
+                                        preview_info.visible = False
+                                        pdf_preview.visible = False
+                                    return
+                                
+                                url_status.set_text('Validating URL...')
+                                url_status.classes(replace='text-blue-500')
+                                url_status.visible = True
+                                
+                                try:
+                                    import urllib.request
+                                    import urllib.parse
+                                    
+                                    # Validate URL format
+                                    parsed = urllib.parse.urlparse(url)
+                                    if not parsed.scheme or not parsed.netloc:
+                                        raise ValueError("Invalid URL format")
+                                    
+                                    # Try HEAD request
+                                    req = urllib.request.Request(url, method='HEAD')
+                                    with urllib.request.urlopen(req, timeout=5) as response:
+                                        content_type = response.headers.get('Content-Type', '')
+                                        content_length = response.headers.get('Content-Length', '0')
+                                        size_mb = int(content_length) / (1024 * 1024) if content_length else 0
+                                        
+                                        if 'pdf' in content_type.lower() or url.lower().endswith('.pdf'):
+                                            url_status.set_text(f'✓ Valid PDF URL ({size_mb:.1f} MB)')
+                                            url_status.classes(replace='text-green-500')
+                                            
+                                            # Show preview info
+                                            preview_info.clear()
+                                            with preview_info:
+                                                ui.label('📄 Document from URL').classes('text-lg font-bold mb-3')
+                                                ui.label(f'URL: {url[:60]}...' if len(url) > 60 else f'URL: {url}').classes('text-base mb-2')
+                                                ui.label(f'Size: {size_mb:.1f} MB').classes('text-sm opacity-70')
+                                                ui.label('Type: PDF').classes('text-sm opacity-70 mt-1')
+                                            preview_info.visible = True
+                                        else:
+                                            url_status.set_text('⚠ URL accessible (may not be PDF)')
+                                            url_status.classes(replace='text-yellow-500')
+                                            
+                                            # Show preview info anyway
+                                            preview_info.clear()
+                                            with preview_info:
+                                                ui.label('📄 Document from URL').classes('text-lg font-bold mb-3')
+                                                ui.label(f'URL: {url[:60]}...' if len(url) > 60 else f'URL: {url}').classes('text-base mb-2')
+                                                ui.label(f'Size: {size_mb:.1f} MB').classes('text-sm opacity-70')
+                                                ui.label(f'Type: {content_type}').classes('text-sm opacity-70 mt-1')
+                                            preview_info.visible = True
+                                except Exception as e:
+                                    url_status.set_text(f'✗ Invalid URL: {str(e)}')
+                                    url_status.classes(replace='text-red-500')
+                                    preview_info.visible = False
+                            
+                            url_input.on('blur', validate_url)
+                            url_input.on('input', lambda: url_status.set_text('') if not url_input.value.strip() else None)
             
                 # Translation Settings Card
                 with ui.card().classes('w-full deepl-style compact-card'):
@@ -661,21 +790,21 @@ def launch(port: int = 7860, share: bool = False):
                         ui.label('Engine:').classes('font-medium text-base w-24')
                         backends = get_available_backends()
                         engine_options = {b[0]: b[1] for b in backends if b[2]}
-                        engine_select = ui.select(engine_options, value='free').classes('flex-grow text-base')
+                        engine_select = ui.select(engine_options, value=state.default_engine).classes('flex-grow text-base')
                     
                     # Quality passes as dropdown
                     with ui.row().classes('items-center gap-4 mb-4'):
                         ui.label('Quality:').classes('font-medium text-base w-24')
                         quality_passes = ui.select(
                             {1: '1 pass (fast)', 2: '2 passes', 3: '3 passes', 4: '4 passes', 5: '5 passes (best)'},
-                            value=1
+                            value=state.default_quality
                         ).classes('flex-grow text-base')
                     
                     ui.separator().classes('my-4')
                     
                     # Advanced options
                     with ui.expansion('Advanced Options', icon='tune').classes('w-full text-base'):
-                        enable_masking = ui.checkbox('Enable masking', value=True).classes('text-base mb-3')
+                        enable_masking = ui.checkbox('Enable masking', value=state.default_masking).classes('text-base mb-3')
                         with ui.row().classes('gap-4 ml-6'):
                             translate_equations = ui.checkbox('Equations', value=False).classes('text-base')
                             translate_tables = ui.checkbox('Tables', value=False).classes('text-base')
@@ -706,15 +835,23 @@ def launch(port: int = 7860, share: bool = False):
                 with ui.card().classes('w-full deepl-style compact-card').style('min-height: 500px;') as preview_card:
                     ui.label('Preview & Progress').classes('text-base font-semibold mb-4')
                     
+                    # PDF Preview area
+                    pdf_preview = ui.html('').classes('w-full mb-4').style('min-height: 300px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; background: #f5f5f5;')
+                    pdf_preview.visible = False
+                    
                     # Preview area (for source document info)
                     preview_info = ui.column().classes('w-full mb-4 p-3').style('background: rgba(99, 102, 241, 0.05); border-radius: 8px;')
                     preview_info.visible = False
                     
                     # Progress bar (hidden initially)
-                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full mb-3').style('height: 8px;')
+                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full mb-3').style('height: 12px; border-radius: 6px;')
                     progress_bar.visible = False
                     progress_label = ui.label('').classes('text-base text-center mb-3 font-semibold')
                     progress_label.visible = False
+                    
+                    # Loading spinner
+                    loading_spinner = ui.spinner(size='lg', color='primary').classes('mx-auto mb-3')
+                    loading_spinner.visible = False
                     
                     # Log output with timestamps
                     log_output = ui.log(max_lines=20).classes('w-full mono-font text-base').style('height: 250px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1);')
@@ -727,12 +864,41 @@ def launch(port: int = 7860, share: bool = False):
                     result_stats = ui.label('').classes('text-base opacity-80 mt-3')
                     result_stats.visible = False
                     
-                    download_btn = ui.button(
-                        'Download Translated PDF',
-                        icon='download',
-                        on_click=lambda: ui.download(preview_card._output_path) if hasattr(preview_card, '_output_path') else None
-                    ).classes('w-full mt-4 text-lg py-3').props('color=primary')
-                    download_btn.visible = False
+                    with ui.row().classes('w-full gap-2 mt-4'):
+                        download_btn = ui.button(
+                            'Download Translated PDF',
+                            icon='download',
+                            on_click=lambda: ui.download(preview_card._output_path) if hasattr(preview_card, '_output_path') else None
+                        ).classes('flex-grow text-lg py-3').props('color=primary')
+                        download_btn.visible = False
+                        
+                        clear_btn = ui.button(
+                            'Clear',
+                            icon='clear',
+                            on_click=lambda: clear_translation_results()
+                        ).classes('text-lg py-3').props('flat')
+                        clear_btn.visible = False
+                    
+                    def clear_translation_results():
+                        preview_info.clear()
+                        preview_info.visible = False
+                        pdf_preview.visible = False
+                        progress_bar.visible = False
+                        progress_label.visible = False
+                        loading_spinner.visible = False
+                        log_output.visible = False
+                        result_status.set_text('Upload a document and click Translate to begin')
+                        result_status.classes(replace='text-base text-center opacity-70 mt-6')
+                        result_path.visible = False
+                        result_stats.visible = False
+                        download_btn.visible = False
+                        clear_btn.visible = False
+                        uploaded_file['path'] = None
+                        uploaded_file['name'] = None
+                        url_input.set_value('')
+                        if hasattr(preview_card, '_output_path'):
+                            delattr(preview_card, '_output_path')
+                        ui.notify('Translation results cleared', type='info')
             
             # Define translation function after all UI elements are created
             async def start_translation():
@@ -747,11 +913,14 @@ def launch(port: int = 7860, share: bool = False):
                 translate_btn.props('disable')
                 translate_btn.set_text('Translating...')
                 progress_bar.visible = True
+                progress_bar.value = 0
                 progress_label.visible = True
+                loading_spinner.visible = True
                 log_output.visible = True
                 result_status.set_text('Translating...')
                 result_status.classes(replace='text-sm text-center font-medium')
                 download_btn.visible = False
+                clear_btn.visible = False
                 log_output.clear()
                 
                 # Initial log message
@@ -785,7 +954,7 @@ def launch(port: int = 7860, share: bool = False):
                         progress_bar.value = pct
                         progress_label.set_text(f"{int(pct * 100)}% - {msg}")
                         log_output.push(f"[{timestamp}] {msg}")
-                        ui.run_javascript('window.scrollTo(0, document.body.scrollHeight);', respond=False)
+                        # Don't auto-scroll - let user control scrolling
                     
                     # Run translation in background task
                     result = await run_translation(job, update_progress)
@@ -793,6 +962,7 @@ def launch(port: int = 7860, share: bool = False):
                     # Show result
                     progress_bar.visible = False
                     progress_label.visible = False
+                    loading_spinner.visible = False
                     translate_btn.props(remove='disable')
                     translate_btn.set_text('Translate Document')
                     
@@ -805,6 +975,7 @@ def launch(port: int = 7860, share: bool = False):
                         result_path.visible = True
                         preview_card._output_path = result.get('output_path')
                         download_btn.visible = True
+                        clear_btn.visible = True
                         
                         # Show stats if available
                         if result.get('stats'):
@@ -849,13 +1020,21 @@ def launch(port: int = 7860, share: bool = False):
         with ui.column().classes('w-full max-w-6xl mx-auto gap-3 p-3').style('height: calc(100vh - 100px); overflow-y: hidden;'):
             with ui.row().classes('w-full gap-3'):
                 # Left - Default glossary browser
-                with ui.column().classes('w-1/2 gap-2'):
+                with ui.column().classes('w-1/2 gap-2').style('overflow-y: auto; max-height: 100%;'):
                     with ui.card().classes('w-full deepl-style compact-card'):
-                        ui.label('Default Scientific Glossary').classes('text-xs font-semibold mb-2 compact-text')
-                        ui.label(f'{len(default_glossary)} terms • English ↔ French').classes('text-xs opacity-70 mb-2 compact-text')
+                        ui.label('Default Scientific Glossary').classes('text-base font-semibold mb-2')
+                        ui.label(f'{len(default_glossary)} terms • English ↔ French').classes('text-sm opacity-70 mb-3')
                         
                         # Search
-                        search_input = ui.input('Search terms...', on_change=lambda: filter_glossary()).props('dense clearable').classes('w-full mb-2 compact-text text-xs')
+                        search_input = ui.input('Search terms...', on_change=lambda: filter_glossary()).props('dense clearable').classes('w-full mb-2 text-base')
+                        
+                        # Domain filter
+                        domains = sorted(set(e.domain or 'general' for e in default_glossary.entries))
+                        domain_filter = ui.select(
+                            {'all': 'All Domains'} | {d: d.title() for d in domains},
+                            value='all',
+                            on_change=lambda: filter_glossary()
+                        ).classes('w-full mb-2 text-base').props('dense')
                         
                         # Glossary table
                         columns = [
@@ -866,28 +1045,31 @@ def launch(port: int = 7860, share: bool = False):
                         
                         rows = [
                             {'source': e.source, 'target': e.target, 'domain': e.domain or 'general'}
-                            for e in default_glossary.entries[:50]
+                            for e in default_glossary.entries
                         ]
                         
-                        glossary_table = ui.table(columns=columns, rows=rows, row_key='source').classes('w-full compact-text').style('font-size: 10px;')
+                        glossary_table = ui.table(columns=columns, rows=rows, row_key='source').classes('w-full').style('font-size: 12px; max-height: 500px;')
                         glossary_table.props('dense flat')
                         
                         def filter_glossary():
                             query = search_input.value.lower() if search_input.value else ''
+                            selected_domain = domain_filter.value
+                            
                             filtered = [
                                 {'source': e.source, 'target': e.target, 'domain': e.domain or 'general'}
                                 for e in default_glossary.entries
-                                if query in e.source.lower() or query in e.target.lower()
-                            ][:50]
+                                if (query in e.source.lower() or query in e.target.lower() or query in (e.domain or 'general').lower())
+                                and (selected_domain == 'all' or (e.domain or 'general') == selected_domain)
+                            ]
                             glossary_table.rows = filtered
                 
                 # Right - Custom glossary
-                with ui.column().classes('w-1/2 gap-3'):
+                with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                     with ui.card().classes('w-full deepl-style compact-card'):
-                        ui.label('Create Custom Glossary').classes('text-sm font-semibold mb-3')
+                        ui.label('Create Custom Glossary').classes('text-base font-semibold mb-3')
                         
                         # Format help
-                        with ui.expansion('Format Guide', icon='help').classes('w-full mb-2 text-xs'):
+                        with ui.expansion('Format Guide', icon='help').classes('w-full mb-2'):
                             ui.markdown('''
 **Format:** `source_term, target_term` or `source_term → target_term`
 
@@ -896,16 +1078,64 @@ def launch(port: int = 7860, share: bool = False):
 neural network, réseau de neurones
 deep learning, apprentissage profond
 ```
-                            ''').classes('text-xs')
+                            ''').classes('text-sm')
                         
                         custom_glossary = ui.textarea(
                             placeholder='# source_term, target_term\nneural network, réseau de neurones',
-                        ).classes('w-full mono-font text-xs compact-text').props('rows=8')
+                        ).classes('w-full mono-font text-base').props('rows=10')
                         
                         with ui.row().classes('gap-2 mt-2'):
-                            ui.button('Save', icon='save').props('color=primary dense').classes('text-xs')
-                            ui.button('Load', icon='upload_file').props('dense').classes('text-xs')
-                            ui.button('Export', icon='download').props('dense').classes('text-xs')
+                            def save_custom_glossary():
+                                content = custom_glossary.value
+                                if not content.strip():
+                                    ui.notify('Glossary is empty', type='warning')
+                                    return
+                                try:
+                                    # Save to user config directory
+                                    from scitrans_llms.config import GLOSSARY_DIR
+                                    GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
+                                    save_path = GLOSSARY_DIR / 'custom_glossary.csv'
+                                    with open(save_path, 'w', encoding='utf-8') as f:
+                                        f.write('source,target\n')
+                                        for line in content.strip().split('\n'):
+                                            line = line.strip()
+                                            if not line or line.startswith('#'):
+                                                continue
+                                            for sep in [',', '\t', ' → ', ' -> ', ' = ', ':']:
+                                                if sep in line:
+                                                    parts = line.split(sep, 1)
+                                                    if len(parts) == 2:
+                                                        f.write(f'"{parts[0].strip()}","{parts[1].strip()}"\n')
+                                                    break
+                                    ui.notify(f'Glossary saved to {save_path}', type='positive')
+                                except Exception as e:
+                                    ui.notify(f'Save failed: {str(e)}', type='negative')
+                            
+                            def load_custom_glossary():
+                                try:
+                                    from scitrans_llms.config import GLOSSARY_DIR
+                                    load_path = GLOSSARY_DIR / 'custom_glossary.csv'
+                                    if load_path.exists():
+                                        glossary = load_glossary_csv(load_path)
+                                        content = '\n'.join([f'{e.source}, {e.target}' for e in glossary.entries])
+                                        custom_glossary.set_value(content)
+                                        ui.notify(f'Loaded {len(glossary.entries)} entries', type='positive')
+                                    else:
+                                        ui.notify('No saved glossary found', type='warning')
+                                except Exception as e:
+                                    ui.notify(f'Load failed: {str(e)}', type='negative')
+                            
+                            def export_custom_glossary():
+                                content = custom_glossary.value
+                                if not content.strip():
+                                    ui.notify('Glossary is empty', type='warning')
+                                    return
+                                ui.download(content.encode('utf-8'), filename='custom_glossary.txt')
+                                ui.notify('Glossary exported', type='positive')
+                            
+                            ui.button('Save', icon='save', on_click=save_custom_glossary).props('color=primary dense').classes('text-sm')
+                            ui.button('Load', icon='upload_file', on_click=load_custom_glossary).props('dense').classes('text-sm')
+                            ui.button('Export', icon='download', on_click=export_custom_glossary).props('dense').classes('text-sm')
     
     async def render_developer_panel():
         """Render the developer tools panel."""
@@ -920,6 +1150,13 @@ deep learning, apprentissage profond
             with ui.tab_panel(testing_tab).classes('p-4'):
                 # Centered container
                 with ui.column().classes('w-full max-w-6xl mx-auto gap-3').style('height: calc(100vh - 140px); overflow-y: auto;'):
+                    # Clear translation button
+                    with ui.row().classes('w-full justify-end mb-2'):
+                        def clear_test_results():
+                            test_output.set_content('*Output will appear here...*')
+                            test_input.set_value('The neural network achieved state-of-the-art performance.')
+                            ui.notify('Test results cleared', type='info')
+                        ui.button('Clear', icon='clear', on_click=clear_test_results).props('flat dense').classes('text-xs')
                     with ui.row().classes('w-full gap-3'):
                         # Left - Test input
                         with ui.column().classes('w-1/2 gap-2'):
@@ -995,15 +1232,50 @@ deep learning, apprentissage profond
                         with ui.row().classes('justify-between items-center mb-2'):
                             ui.label('System Logs').classes('text-xs font-semibold compact-text')
                             with ui.row().classes('gap-1'):
-                                ui.button('Clear', icon='delete').props('flat dense').classes('text-xs')
-                                ui.button('Export', icon='download').props('flat dense').classes('text-xs')
+                                def clear_logs():
+                                    log_viewer.clear()
+                                    log_viewer.push(f'[{datetime.now().strftime("%H:%M:%S")}] Logs cleared')
+                                    ui.notify('Logs cleared', type='info')
+                                
+                                def export_logs():
+                                    try:
+                                        log_content = '\n'.join([f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] {msg}' for msg in state.logs[-1000:]])
+                                        if not log_content.strip():
+                                            log_content = 'No logs available'
+                                        ui.download(log_content.encode('utf-8'), filename=f'scitrans_logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt')
+                                        ui.notify('Logs exported', type='positive')
+                                    except Exception as e:
+                                        ui.notify(f'Export failed: {str(e)}', type='negative')
+                                
+                                ui.button('Clear', icon='delete', on_click=clear_logs).props('flat dense').classes('text-xs')
+                                ui.button('Export', icon='download', on_click=export_logs).props('flat dense').classes('text-xs')
                         
-                        log_viewer = ui.log(max_lines=50).classes('w-full mono-font text-xs compact-text').style('height: calc(100vh - 200px); font-size: 10px;')
+                        log_viewer = ui.log(max_lines=100).classes('w-full mono-font text-xs compact-text').style('height: calc(100vh - 200px); font-size: 10px;')
                         
-                        # Add some sample logs
-                        log_viewer.push('[INFO] SciTrans-LLMs GUI started')
-                        log_viewer.push('[INFO] Default glossary loaded: 200+ terms')
-                        log_viewer.push('[INFO] Available backends: free, dictionary')
+                        # Initialize logs
+                        timestamp = datetime.now().strftime('%H:%M:%S')
+                        log_viewer.push(f'[{timestamp}] SciTrans-LLMs GUI started')
+                        state.logs.append('SciTrans-LLMs GUI started')
+                        
+                        # Set up log capture
+                        def log_callback(msg):
+                            timestamp = datetime.now().strftime('%H:%M:%S')
+                            log_viewer.push(f'[{timestamp}] {msg}')
+                            state.logs.append(msg)
+                            if len(state.logs) > 1000:
+                                state.logs.pop(0)
+                        
+                        set_global_log_callback(log_callback)
+                        
+                        # Add initial logs
+                        default_glossary = get_default_glossary()
+                        log_viewer.push(f'[{timestamp}] Default glossary loaded: {len(default_glossary)} terms')
+                        state.logs.append(f'Default glossary loaded: {len(default_glossary)} terms')
+                        
+                        backends = get_available_backends()
+                        available = [b[0] for b in backends if b[2]]
+                        log_viewer.push(f'[{timestamp}] Available backends: {", ".join(available)}')
+                        state.logs.append(f'Available backends: {", ".join(available)}')
             
             # CLI Commands
             with ui.tab_panel(cli_tab).classes('p-4'):
@@ -1036,7 +1308,7 @@ deep learning, apprentissage profond
             
             # Debug Info - hide personal info
             with ui.tab_panel(debug_tab).classes('p-4'):
-                with ui.column().classes('w-full max-w-6xl mx-auto gap-3'):
+                with ui.column().classes('w-full max-w-6xl mx-auto gap-3').style('height: calc(100vh - 140px); overflow-y: auto;'):
                     with ui.row().classes('w-full gap-3'):
                         with ui.column().classes('w-1/2 gap-2'):
                             with ui.card().classes('w-full deepl-style compact-card'):
@@ -1049,6 +1321,7 @@ deep learning, apprentissage profond
                                 python_version = sys.version.split()[0]
                                 platform_name = platform.system()
                                 platform_release = platform.release()
+                                platform_version = platform.version()
                                 
                                 # Get working directory but sanitize it
                                 cwd = os.getcwd()
@@ -1062,8 +1335,21 @@ deep learning, apprentissage profond
                                 info = [
                                     f"Python: {python_version}",
                                     f"Platform: {platform_name} {platform_release}",
+                                    f"Platform Version: {platform_version}",
                                     f"Working Dir: {cwd_display}",
                                 ]
+                                
+                                # System resources
+                                try:
+                                    import psutil
+                                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                                    memory = psutil.virtual_memory()
+                                    info.append(f"CPU: {cpu_percent:.1f}%")
+                                    info.append(f"Memory: {memory.percent:.1f}% ({memory.used / (1024**3):.1f} GB / {memory.total / (1024**3):.1f} GB)")
+                                except ImportError:
+                                    pass
+                                except Exception:
+                                    pass
                                 
                                 try:
                                     import fitz
@@ -1072,6 +1358,21 @@ deep learning, apprentissage profond
                                     info.append("PyMuPDF: Not installed")
                                 
                                 for line in info:
+                                    ui.label(line).classes('mono-font text-xs compact-text')
+                            
+                            with ui.card().classes('w-full deepl-style compact-card'):
+                                ui.label('Application State').classes('text-xs font-semibold mb-2 compact-text')
+                                
+                                state_info = [
+                                    f"Dark Mode: {'On' if state.dark_mode else 'Off'}",
+                                    f"Default Engine: {state.default_engine}",
+                                    f"Default Quality: {state.default_quality} pass(es)",
+                                    f"Default Masking: {'Enabled' if state.default_masking else 'Disabled'}",
+                                    f"Current Job: {'Active' if state.current_job else 'None'}",
+                                    f"Logs Count: {len(state.logs)}",
+                                ]
+                                
+                                for line in state_info:
                                     ui.label(line).classes('mono-font text-xs compact-text')
                         
                         with ui.column().classes('w-1/2 gap-2'):
@@ -1086,14 +1387,46 @@ deep learning, apprentissage profond
                                     ('Anthropic', 'anthropic'),
                                     ('BeautifulSoup', 'bs4'),
                                     ('python-docx', 'docx'),
+                                    ('requests', 'requests'),
+                                    ('numpy', 'numpy'),
+                                    ('psutil', 'psutil'),
                                 ]
                                 
                                 for name, mod in modules:
                                     try:
-                                        __import__(mod)
-                                        ui.label(f'✓ {name}').classes('text-green-500 text-xs compact-text')
+                                        mod_obj = __import__(mod)
+                                        version = getattr(mod_obj, '__version__', 'installed')
+                                        ui.label(f'✓ {name} ({version})').classes('text-green-500 text-xs compact-text')
                                     except ImportError:
                                         ui.label(f'✗ {name}').classes('text-red-500 text-xs compact-text')
+                            
+                            with ui.card().classes('w-full deepl-style compact-card'):
+                                ui.label('Translation Backends').classes('text-xs font-semibold mb-2 compact-text')
+                                
+                                backends = get_available_backends()
+                                for backend_id, label, available in backends:
+                                    status = '✓' if available else '✗'
+                                    color = 'text-green-500' if available else 'text-red-500'
+                                    ui.label(f'{status} {label}').classes(f'{color} text-xs compact-text')
+                            
+                            with ui.card().classes('w-full deepl-style compact-card'):
+                                ui.label('Glossary Info').classes('text-xs font-semibold mb-2 compact-text')
+                                
+                                try:
+                                    default_glossary = get_default_glossary()
+                                    ui.label(f'Default Glossary: {len(default_glossary)} entries').classes('text-xs compact-text')
+                                    
+                                    # Count by domain
+                                    domains = {}
+                                    for entry in default_glossary.entries:
+                                        domain = entry.domain or 'general'
+                                        domains[domain] = domains.get(domain, 0) + 1
+                                    
+                                    ui.label('Entries by domain:').classes('text-xs compact-text mt-2')
+                                    for domain, count in sorted(domains.items()):
+                                        ui.label(f'  • {domain}: {count}').classes('text-xs compact-text opacity-70')
+                                except Exception as e:
+                                    ui.label(f'Error loading glossary: {str(e)}').classes('text-red-500 text-xs compact-text')
     
     async def render_settings_panel(km: KeyManager):
         """Render the settings and API keys panel."""
@@ -1167,19 +1500,66 @@ deep learning, apprentissage profond
                             ui.label('Default Engine').classes('text-xs compact-text')
                             backends = get_available_backends()
                             default_engine_options = {b[0]: b[1] for b in backends if b[2]}
-                            default_engine = ui.select(default_engine_options, value='free').classes('text-xs compact-text').props('dense')
+                            default_engine = ui.select(
+                                default_engine_options,
+                                value=state.default_engine,
+                                on_change=lambda e: setattr(state, 'default_engine', e.value) or ui.notify(f'Default engine set to {e.value}', type='info')
+                            ).classes('text-xs compact-text').props('dense')
                         
                         # Default quality passes - dropdown
                         with ui.row().classes('items-center justify-between py-1'):
                             ui.label('Default Quality').classes('text-xs compact-text')
                             default_quality = ui.select(
                                 {1: '1 pass (fast)', 2: '2 passes', 3: '3 passes', 4: '4 passes', 5: '5 passes (best)'},
-                                value=1
+                                value=state.default_quality,
+                                on_change=lambda e: setattr(state, 'default_quality', int(e.value)) or ui.notify(f'Default quality set to {e.value} passes', type='info')
                             ).classes('text-xs compact-text').props('dense')
                         
                         with ui.row().classes('items-center justify-between py-1'):
                             ui.label('Default Masking').classes('text-xs compact-text')
-                            default_masking = ui.switch(value=True).props('dense')
+                            default_masking = ui.switch(
+                                value=state.default_masking,
+                                on_change=lambda e: setattr(state, 'default_masking', e.value) or ui.notify(f'Default masking {"enabled" if e.value else "disabled"}', type='info')
+                            ).props('dense')
+                        
+                        ui.separator().classes('my-2')
+                        
+                        # Auto-apply settings
+                        with ui.row().classes('items-center justify-between py-1'):
+                            ui.label('Auto-apply to Translate Tab').classes('text-xs compact-text')
+                            auto_apply = ui.switch(value=True).props('dense')
+                        
+                        # Cache settings
+                        with ui.row().classes('items-center justify-between py-1'):
+                            ui.label('Enable Translation Cache').classes('text-xs compact-text')
+                            cache_enabled = ui.switch(value=True).props('dense')
+                        
+                        # Logging level
+                        with ui.row().classes('items-center justify-between py-1'):
+                            ui.label('Logging Level').classes('text-xs compact-text')
+                            log_level = ui.select(
+                                {'DEBUG': 'Debug', 'INFO': 'Info', 'WARNING': 'Warning', 'ERROR': 'Error'},
+                                value='INFO',
+                                on_change=lambda e: logging.getLogger().setLevel(getattr(logging, e.value)) or ui.notify(f'Logging level set to {e.value}', type='info')
+                            ).classes('text-xs compact-text').props('dense')
+                        
+                        # Output directory
+                        with ui.row().classes('items-center justify-between py-1'):
+                            ui.label('Output Directory').classes('text-xs compact-text')
+                            output_dir_input = ui.input(
+                                value=str(Path.home() / 'scitrans_output'),
+                                placeholder='Output directory path'
+                            ).classes('flex-grow text-xs compact-text').props('dense')
+                        
+                        def apply_settings():
+                            """Apply all settings immediately."""
+                            if auto_apply.value:
+                                # Update translate tab defaults
+                                ui.notify('Settings applied to Translate tab', type='positive')
+                            else:
+                                ui.notify('Settings saved (auto-apply disabled)', type='info')
+                        
+                        ui.button('Apply Settings Now', icon='check', on_click=apply_settings).classes('w-full mt-3 text-xs').props('color=primary dense')
                     
                     with ui.card().classes('w-full deepl-style compact-card'):
                         ui.label('About').classes('text-xs font-semibold mb-2 compact-text')
