@@ -836,7 +836,7 @@ def launch(port: int = 7860, share: bool = False):
                     ui.label('Preview & Progress').classes('text-base font-semibold mb-4')
                     
                     # PDF Preview area
-                    pdf_preview = ui.html('').classes('w-full mb-4').style('min-height: 300px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; background: #f5f5f5;')
+                    pdf_preview = ui.html('', sanitize=False).classes('w-full mb-4').style('min-height: 300px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; background: #f5f5f5;')
                     pdf_preview.visible = False
                     
                     # Preview area (for source document info)
