@@ -649,51 +649,32 @@ def keys(
 @app.command()
 def gui(
     port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
-    share: bool = typer.Option(False, "--share", "-s", help="Share publicly (not supported in NiceGUI)"),
+    share: bool = typer.Option(False, "--share", "-s", help="Share publicly (if supported)"),
 ):
-    """Launch the modern web GUI.
+    """Launch the web GUI.
     
-    Opens a browser window with the NiceGUI interface for scientific document translation.
+    Opens a browser window for scientific document translation.
     
     Features:
-    - PDF, DOCX, HTML document support
+    - PDF document support with layout preservation
     - French ↔ English bilingual translation
     - Page selection and quality options
     - Custom glossary support
-    - Dark/Light mode
-    - Developer tools and logging
+    - Multiple translation engines
     """
     # Check dependencies
-    missing_deps = []
-    
     try:
         import nicegui
-    except ImportError as e:
-        missing_deps.append(f"nicegui: {e}")
+    except ImportError:
+        console.print("[red]Error:[/] NiceGUI not installed")
+        console.print("  [cyan]pip install 'nicegui>=1.4.0'[/]")
+        raise typer.Exit(1)
     
     try:
         import fitz
-    except ImportError as e:
-        missing_deps.append(f"PyMuPDF: {e}")
-    
-    if missing_deps:
-        console.print("[red]Error:[/] Missing GUI dependencies:")
-        for dep in missing_deps:
-            console.print(f"  - {dep}")
-        console.print("\n[bold]To fix:[/]")
-        console.print("  [cyan]pip install 'nicegui>=1.4.0' PyMuPDF[/]")
-        console.print("  [dim]Or reinstall the package:[/] [cyan]pip install -e .[/]")
-        raise typer.Exit(1)
-    
-    # Check if we're in the project's venv
-    import sys
-    venv_path = Path(__file__).parent.parent / '.venv'
-    if not str(venv_path / 'bin' / 'python3') in sys.executable and not str(venv_path / 'Scripts' / 'python.exe') in sys.executable:
-        console.print("[yellow]⚠ Warning:[/] Not running from project virtual environment.")
-        console.print("[dim]For best results, activate the venv first:[/]")
-        console.print(f"  [cyan]source .venv/bin/activate[/]  # macOS/Linux")
-        console.print(f"  [cyan].venv\\Scripts\\activate[/]  # Windows")
-        console.print()
+    except ImportError:
+        console.print("[yellow]Warning:[/] PyMuPDF not installed - PDF features limited")
+        console.print("  [cyan]pip install PyMuPDF[/]")
     
     try:
         from scitrans_llms.gui import launch
@@ -702,17 +683,7 @@ def gui(
         console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
         console.print("[dim]Press Ctrl+C to stop the server[/]\n")
         
-        if share:
-            console.print("[yellow]Note:[/] --share is not supported in NiceGUI. Use a reverse proxy for public access.")
-        
         launch(port=port, share=share)
-    except ImportError as e:
-        console.print(f"[red]Error:[/] Failed to import GUI module: {e}")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/]")
-        console.print("\n[bold]To fix:[/]")
-        console.print("  [cyan]pip install 'nicegui>=1.4.0' PyMuPDF python-docx beautifulsoup4[/]")
-        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error launching GUI:[/] {e}")
         import traceback

@@ -161,10 +161,14 @@ class HeuristicLayoutDetector(LayoutDetector):
     def _looks_like_list_item(self, text: str) -> bool:
         """Check if text is a list item."""
         patterns = [
-            r'^[\s]*[-•●○◦▪▸►]\s',  # Bullet points
-            r'^[\s]*\d+[.)]\s',      # Numbered lists
-            r'^[\s]*[a-z][.)]\s',    # Lettered lists
-            r'^[\s]*\([a-z0-9]+\)\s', # Parenthesized
+            r'^[\s]*[-•●○◦▪▸►]\s',      # Bullet points
+            r'^[\s]*\d+[.)]\s',          # Numbered lists: 1. 2. 1) 2)
+            r'^[\s]*\d+\.\d+[.)]*\s',    # Hierarchical: 1.1 1.2 2.1
+            r'^[\s]*\d+\.\d+\.\d+[.)]*\s', # Deep hierarchical: 1.1.1
+            r'^[\s]*[a-z][.)]\s',        # Lettered lists: a. b. a) b)
+            r'^[\s]*[ivxlcdm]+[.)]\s',   # Roman numerals: i. ii. iii.
+            r'^[\s]*\([a-z0-9]+\)\s',    # Parenthesized: (a) (1)
+            r'^[\s]*\[[a-z0-9]+\]\s',    # Bracketed: [1] [a]
         ]
         return any(re.match(p, text, re.IGNORECASE) for p in patterns)
     

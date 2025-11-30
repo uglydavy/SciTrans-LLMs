@@ -42,6 +42,7 @@ from scitrans_llms.translate.base import (
 from scitrans_llms.translate.glossary import Glossary, get_default_glossary
 from scitrans_llms.translate.context import DocumentContext
 from scitrans_llms.refine.base import Refiner, create_refiner
+from scitrans_llms.refine.postprocess import preserve_list_structure
 
 
 # Type alias for progress callbacks
@@ -231,11 +232,16 @@ class TranslationPipeline:
                 
                 # Translate
                 result = self.translator.translate_block(block, context)
-                block.translated_text = result.text
+                translated_text = result.text
+                
+                # Preserve list structure (1., 1.1, 2., a), etc.)
+                source_text = block.masked_text or block.source_text
+                translated_text = preserve_list_structure(source_text, translated_text)
+                
+                block.translated_text = translated_text
                 
                 # Update context window
-                source = block.masked_text or block.source_text
-                doc_context.add_translation(source, result.text)
+                doc_context.add_translation(source_text, translated_text)
                 
                 stats["translated_blocks"] += 1
                 
@@ -345,7 +351,7 @@ def translate_document(
         PipelineResult with translated document
     """
     from scitrans_llms.ingest import parse_pdf
-    import shutil
+    from scitrans_llms.render.pdf import render_pdf as render_pdf_output
     
     # Parse direction
     if direction == "en-fr":
@@ -359,7 +365,7 @@ def translate_document(
             progress(msg)
     
     # Parse PDF
-    prog("Parsing layout from PDF...")
+    prog("Parsing layout from PDF...", 0.1)
     
     # Parse page range
     page_list = None
@@ -381,7 +387,7 @@ def translate_document(
     )
     
     # Configure pipeline
-    prog("Translating blocks...")
+    prog("Translating blocks...", 0.3)
     config = PipelineConfig(
         source_lang=source_lang,
         target_lang=target_lang,
@@ -393,12 +399,23 @@ def translate_document(
     pipeline = TranslationPipeline(config, progress_callback=prog)
     result = pipeline.translate(document)
     
-    # Save output - for now just copy input and log what would be done
-    # Full PDF overlay rendering would require additional implementation
-    prog("Rendering translated overlay...")
-    shutil.copy(input_path, output_path)
-    
-    prog(f"Saved translated PDF to {output_path}")
+    # Render translated PDF with actual text overlay
+    prog("Rendering translated PDF...", 0.9)
+    try:
+        render_pdf_output(
+            document=result.document,
+            source_pdf=input_path,
+            output_path=output_path,
+            mode="overlay"  # Overlay translated text on original
+        )
+        prog(f"Saved translated PDF to {output_path}", 1.0)
+    except Exception as e:
+        # Fallback: save as text if PDF rendering fails
+        prog(f"PDF rendering failed ({e}), saving as text...", 0.95)
+        text_path = Path(output_path).with_suffix('.txt')
+        text_path.write_text(result.translated_text, encoding='utf-8')
+        result.errors.append(f"PDF rendering failed: {e}. Saved as text: {text_path}")
+        prog(f"Saved translated text to {text_path}", 1.0)
     
     return result
 

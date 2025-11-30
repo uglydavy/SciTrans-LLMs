@@ -19,7 +19,7 @@ requests>=2.31.0
 deep-translator>=1.11.4
 pydantic>=2.0.0
 
-# Modern GUI (NiceGUI instead of Gradio for better aesthetics)
+# GUI
 nicegui>=1.4.0
 
 # Document parsing
