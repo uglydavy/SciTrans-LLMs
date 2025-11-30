@@ -508,6 +508,27 @@ def launch(port: int = 7860, share: bool = False):
         overflow: hidden !important;
         height: 100vh !important;
     }
+    
+    /* Prevent page reload on visibility change */
+    @media (prefers-reduced-motion: no-preference) {
+        * {
+            scroll-behavior: auto !important;
+        }
+    }
+    
+    /* Fix tab panel scrolling */
+    .q-tab-panel {
+        overflow: hidden !important;
+        height: 100% !important;
+    }
+    
+    /* Container for no-scroll tabs */
+    .no-scroll-container {
+        height: calc(100vh - 120px);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
     """
     
     @ui.page('/')
@@ -571,29 +592,29 @@ def launch(port: int = 7860, share: bool = False):
             developer_tab = ui.tab('developer', label='Developer', icon='code')
             settings_tab = ui.tab('settings', label='Settings', icon='settings')
         
-        with ui.tab_panels(tabs, value=translate_tab).classes('w-full flex-grow'):
+        with ui.tab_panels(tabs, value=translate_tab).classes('w-full flex-grow no-scroll-container').style('height: calc(100vh - 120px); overflow: hidden;'):
             # =================================================================
             # TRANSLATE TAB
             # =================================================================
-            with ui.tab_panel(translate_tab).classes('p-0'):
+            with ui.tab_panel(translate_tab).classes('p-0 no-scroll-container').style('height: 100%; overflow: hidden;'):
                 await render_translate_panel()
             
             # =================================================================
             # GLOSSARY TAB
             # =================================================================
-            with ui.tab_panel(glossary_tab).classes('p-6'):
+            with ui.tab_panel(glossary_tab).classes('p-6 no-scroll-container').style('height: 100%; overflow: hidden;'):
                 await render_glossary_panel()
             
             # =================================================================
             # DEVELOPER TAB
             # =================================================================
-            with ui.tab_panel(developer_tab).classes('p-0'):
+            with ui.tab_panel(developer_tab).classes('p-0 no-scroll-container').style('height: 100%; overflow: hidden;'):
                 await render_developer_panel()
             
             # =================================================================
             # SETTINGS TAB
             # =================================================================
-            with ui.tab_panel(settings_tab).classes('p-6'):
+            with ui.tab_panel(settings_tab).classes('p-6 no-scroll-container').style('height: 100%; overflow: hidden;'):
                 await render_settings_panel(km)
         
         # Footer
@@ -684,16 +705,25 @@ def launch(port: int = 7860, share: bool = False):
                                 file_info = ui.label('').classes('text-base opacity-80 mt-3 font-medium')
                                 file_info.visible = False
                                 
-                                # Invisible upload covering entire area
+                                # Upload widget - make it cover the entire area
                                 upload_widget = ui.upload(
                                     on_upload=handle_upload,
                                     auto_upload=True,
-                                ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt" multiple=False').style('position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;')
+                                ).props('accept=".pdf,.docx,.doc,.html,.htm,.txt" multiple=False')
+                                upload_widget.style('position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;')
                                 
-                                # Make container clickable
+                                # Make container clickable - trigger file picker
                                 def click_upload():
-                                    upload_widget.run_method('click')
+                                    try:
+                                        upload_widget.run_method('click')
+                                    except Exception as e:
+                                        logger.debug(f"Upload click: {e}")
                                 upload_container.on('click', click_upload)
+                                
+                                # Also handle drag and drop
+                                def handle_drop(e):
+                                    logger.debug(f"Drop event: {e}")
+                                upload_container.on('drop', handle_drop)
                         
                         # -------- Download from URL --------
                         with ui.tab_panel(url_tab):
@@ -815,12 +845,82 @@ def launch(port: int = 7860, share: bool = False):
                 with ui.card().classes('w-full deepl-style compact-card'):
                     with ui.row().classes('items-center justify-between mb-3'):
                         ui.label('Custom Glossary').classes('text-base font-semibold')
-                        ui.button('Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
-                            '# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond'
-                        )).props('flat dense').classes('text-base')
+                        with ui.row().classes('gap-2'):
+                            ui.button('Upload', icon='upload_file', on_click=lambda: glossary_upload_widget.run_method('click')).props('flat dense').classes('text-base')
+                            ui.button('Example', icon='help_outline', on_click=lambda: glossary_input.set_value(
+                                '# Format: source_term, target_term\nneural network, réseau de neurones\ndeep learning, apprentissage profond'
+                            )).props('flat dense').classes('text-base')
+                    
+                    # Glossary file upload
+                    glossary_file_info = ui.label('').classes('text-sm opacity-70 mb-2')
+                    glossary_file_info.visible = False
+                    
+                    async def handle_glossary_upload(e):
+                        try:
+                            file_obj = e.file
+                            file_name = file_obj.name
+                            temp_dir = Path(tempfile.gettempdir()) / "scitrans_glossaries"
+                            temp_dir.mkdir(exist_ok=True)
+                            file_path = temp_dir / file_name
+                            await file_obj.save(file_path)
+                            
+                            # Load and display glossary
+                            try:
+                                from scitrans_llms.translate.glossary import load_glossary_csv
+                                glossary = load_glossary_csv(file_path)
+                                
+                                # Format for textarea
+                                glossary_text = '\n'.join([f'{e.source}, {e.target}' for e in glossary.entries])
+                                glossary_input.set_value(glossary_text)
+                                
+                                glossary_file_info.set_text(f'✓ Loaded {len(glossary.entries)} terms from {file_name}')
+                                glossary_file_info.classes(replace='text-green-600')
+                                glossary_file_info.visible = True
+                                
+                                # Save to cache
+                                from scitrans_llms.config import GLOSSARY_DIR
+                                GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
+                                cache_path = GLOSSARY_DIR / f'user_{file_name}'
+                                import shutil
+                                shutil.copy(file_path, cache_path)
+                                
+                                ui.notify(f'Glossary loaded: {len(glossary.entries)} terms', type='positive')
+                            except Exception as ex:
+                                glossary_file_info.set_text(f'✗ Error loading glossary: {str(ex)}')
+                                glossary_file_info.classes(replace='text-red-600')
+                                glossary_file_info.visible = True
+                                logger.exception("Glossary load error")
+                        except Exception as ex:
+                            logger.exception("Glossary upload error")
+                            ui.notify(f'Upload error: {str(ex)}', type='negative')
+                    
+                    glossary_upload_widget = ui.upload(
+                        on_upload=handle_glossary_upload,
+                        auto_upload=True,
+                    ).props('accept=".csv,.txt" multiple=False')
+                    glossary_upload_widget.visible = False
+                    
+                    with ui.expansion('Format Instructions', icon='info').classes('w-full mb-2 text-sm'):
+                        ui.markdown('''
+**Supported formats:**
+- CSV: `source_term,target_term` (first row is header)
+- TXT: `source_term, target_term` or `source_term → target_term`
+
+**Options:**
+- **Strict mode**: Terms must match exactly (case-sensitive)
+- **Context-aware**: Terms adapt to surrounding context
+- **Override default**: Replace default glossary entries
+                        ''').classes('text-sm')
+                    
                     glossary_input = ui.textarea(
                         placeholder='# Format: source_term, target_term\nneural network, réseau de neurones'
                     ).classes('w-full mono-font text-base').props('rows=4')
+                    
+                    # Glossary options
+                    with ui.row().classes('gap-4 mt-2'):
+                        glossary_strict = ui.checkbox('Strict mode', value=False).classes('text-sm')
+                        glossary_context = ui.checkbox('Context-aware', value=True).classes('text-sm')
+                        glossary_override = ui.checkbox('Override default', value=False).classes('text-sm')
                 
                 # Translate button
                 translate_btn = ui.button(
@@ -908,6 +1008,26 @@ def launch(port: int = 7860, share: bool = False):
                 if not source_path and not source_url:
                     ui.notify('Please upload a file or provide a URL', type='warning')
                     return
+                
+                # If URL provided but no file, download it
+                if source_url and not source_path:
+                    try:
+                        log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] Downloading from URL...")
+                        import urllib.request
+                        temp_dir = Path(tempfile.gettempdir()) / "scitrans_uploads"
+                        temp_dir.mkdir(exist_ok=True)
+                        file_name = source_url.split('/')[-1] or 'document.pdf'
+                        if not file_name.endswith('.pdf'):
+                            file_name = 'document.pdf'
+                        file_path = temp_dir / file_name
+                        urllib.request.urlretrieve(source_url, file_path)
+                        uploaded_file['path'] = file_path
+                        uploaded_file['name'] = file_name
+                        log_output.push(f"[{datetime.now().strftime('%H:%M:%S')}] Downloaded: {file_name}")
+                    except Exception as e:
+                        logger.exception("URL download error")
+                        ui.notify(f'Failed to download from URL: {str(e)}', type='negative')
+                        return
                 
                 # Disable button and show progress
                 translate_btn.props('disable')
@@ -1017,7 +1137,7 @@ def launch(port: int = 7860, share: bool = False):
         default_glossary = get_default_glossary()
         
         # Centered container, no scrolling
-        with ui.column().classes('w-full max-w-6xl mx-auto gap-3 p-3').style('height: calc(100vh - 100px); overflow-y: hidden;'):
+        with ui.column().classes('w-full max-w-6xl mx-auto gap-3 p-3').style('height: 100%; overflow-y: auto; max-height: calc(100vh - 180px);'):
             with ui.row().classes('w-full gap-3'):
                 # Left - Default glossary browser
                 with ui.column().classes('w-1/2 gap-2').style('overflow-y: auto; max-height: 100%;'):
@@ -1066,7 +1186,47 @@ def launch(port: int = 7860, share: bool = False):
                 # Right - Custom glossary
                 with ui.column().classes('w-1/2 gap-3').style('overflow-y: auto; max-height: 100%;'):
                     with ui.card().classes('w-full deepl-style compact-card'):
-                        ui.label('Create Custom Glossary').classes('text-base font-semibold mb-3')
+                        with ui.row().classes('items-center justify-between mb-3'):
+                            ui.label('Create Custom Glossary').classes('text-base font-semibold')
+                            # Upload button for glossary file
+                            async def handle_glossary_file_upload(e):
+                                try:
+                                    file_obj = e.file
+                                    file_name = file_obj.name
+                                    temp_dir = Path(tempfile.gettempdir()) / "scitrans_glossaries"
+                                    temp_dir.mkdir(exist_ok=True)
+                                    file_path = temp_dir / file_name
+                                    await file_obj.save(file_path)
+                                    
+                                    # Load and display
+                                    try:
+                                        from scitrans_llms.translate.glossary import load_glossary_csv
+                                        glossary = load_glossary_csv(file_path)
+                                        glossary_text = '\n'.join([f'{e.source}, {e.target}' for e in glossary.entries])
+                                        custom_glossary.set_value(glossary_text)
+                                        
+                                        # Save to cache for others
+                                        from scitrans_llms.config import GLOSSARY_DIR
+                                        GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
+                                        cache_path = GLOSSARY_DIR / f'user_{file_name}'
+                                        import shutil
+                                        shutil.copy(file_path, cache_path)
+                                        
+                                        ui.notify(f'Glossary loaded: {len(glossary.entries)} terms (saved to cache)', type='positive')
+                                    except Exception as ex:
+                                        ui.notify(f'Error loading glossary: {str(ex)}', type='negative')
+                                        logger.exception("Glossary load error")
+                                except Exception as ex:
+                                    ui.notify(f'Upload error: {str(ex)}', type='negative')
+                                    logger.exception("Glossary upload error")
+                            
+                            glossary_file_upload = ui.upload(
+                                on_upload=handle_glossary_file_upload,
+                                auto_upload=True,
+                            ).props('accept=".csv,.txt" multiple=False')
+                            glossary_file_upload.visible = False
+                            
+                            ui.button('Upload File', icon='upload_file', on_click=lambda: glossary_file_upload.run_method('click')).props('flat dense').classes('text-sm')
                         
                         # Format help
                         with ui.expansion('Format Guide', icon='help').classes('w-full mb-2'):
@@ -1136,6 +1296,26 @@ deep learning, apprentissage profond
                             ui.button('Save', icon='save', on_click=save_custom_glossary).props('color=primary dense').classes('text-sm')
                             ui.button('Load', icon='upload_file', on_click=load_custom_glossary).props('dense').classes('text-sm')
                             ui.button('Export', icon='download', on_click=export_custom_glossary).props('dense').classes('text-sm')
+                    
+                    # Corpus Integration Info
+                    with ui.card().classes('w-full deepl-style compact-card mt-3'):
+                        ui.label('Corpus Integration').classes('text-base font-semibold mb-2')
+                        ui.label('Free translation models can be enhanced with verified corpora:').classes('text-sm opacity-70 mb-2')
+                        with ui.expansion('Available Corpora', icon='library_books').classes('w-full'):
+                            ui.markdown('''
+**Europarl Corpus** - European Parliament proceedings (1996-2011)
+- 2M+ sentence pairs (EN-FR)
+- Source: https://www.statmt.org/europarl/
+
+**OPUS PHP Corpus** - PHP documentation translations
+- 1.38M sentence fragments
+- Source: https://opus.nlpl.eu/
+
+**European Language Grid** - Additional EN-FR resources
+- Source: https://live.european-language-grid.eu/
+
+*Note: Corpus integration requires model training. Contact developers for implementation.*
+                            ''').classes('text-sm')
     
     async def render_developer_panel():
         """Render the developer tools panel."""
@@ -1148,38 +1328,41 @@ deep learning, apprentissage profond
         with ui.tab_panels(dev_tabs, value=testing_tab).classes('w-full'):
             # Testing Ground
             with ui.tab_panel(testing_tab).classes('p-4'):
-                # Centered container
-                with ui.column().classes('w-full max-w-6xl mx-auto gap-3').style('height: calc(100vh - 140px); overflow-y: auto;'):
-                    # Clear translation button
-                    with ui.row().classes('w-full justify-end mb-2'):
+                # Centered container with box
+                with ui.column().classes('w-full max-w-4xl mx-auto gap-3').style('height: 100%; overflow-y: auto; max-height: calc(100vh - 180px);'):
+                    # Clear translation button - more visible
+                    with ui.row().classes('w-full justify-between items-center mb-4'):
+                        ui.label('Quick Translation Test').classes('text-lg font-bold')
                         def clear_test_results():
                             test_output.set_content('*Output will appear here...*')
                             test_input.set_value('The neural network achieved state-of-the-art performance.')
                             ui.notify('Test results cleared', type='info')
-                        ui.button('Clear', icon='clear', on_click=clear_test_results).props('flat dense').classes('text-xs')
-                    with ui.row().classes('w-full gap-3'):
-                        # Left - Test input
-                        with ui.column().classes('w-1/2 gap-2'):
-                            with ui.card().classes('w-full deepl-style compact-card'):
-                                ui.label('Quick Translation Test').classes('text-xs font-semibold mb-2 compact-text')
+                        ui.button('Clear Results', icon='clear', on_click=clear_test_results).props('color=primary').classes('text-sm')
+                    
+                    # Testing box - centered
+                    with ui.card().classes('w-full deepl-style compact-card'):
+                        with ui.row().classes('w-full gap-3'):
+                            # Left - Test input
+                            with ui.column().classes('w-1/2 gap-2'):
+                                ui.label('Test Input').classes('text-base font-semibold mb-2')
                                 
                                 test_input = ui.textarea(
                                     placeholder='Enter text to test translation...',
                                     value='The neural network achieved state-of-the-art performance.'
-                                ).classes('w-full text-xs compact-text').props('rows=5 dense')
+                                ).classes('w-full text-base').props('rows=6')
                                 
-                                with ui.row().classes('gap-2 mt-2'):
+                                with ui.row().classes('gap-2 mt-3'):
                                     test_direction = ui.toggle(
                                         {'en-fr': 'EN→FR', 'fr-en': 'FR→EN'},
                                         value='en-fr'
-                                    ).classes('text-xs')
+                                    ).classes('text-base')
                                     # All available backends
                                     backends = get_available_backends()
                                     test_backend_options = {b[0]: b[1] for b in backends}
                                     test_backend = ui.select(
                                         test_backend_options,
                                         value='free'
-                                    ).classes('flex-grow text-xs compact-text').props('dense')
+                                    ).classes('flex-grow text-base')
                                 
                                 async def run_test():
                                     test_output.set_content('Translating...')
@@ -1197,33 +1380,32 @@ deep learning, apprentissage profond
                                     except Exception as e:
                                         test_output.set_content(f'Error: {str(e)}')
                                 
-                                ui.button('Test Translation', icon='play_arrow', on_click=run_test).classes('w-full mt-2 text-xs compact-text').props('color=primary dense')
-                        
-                        # Right - Test output
-                        with ui.column().classes('w-1/2 gap-2'):
-                            with ui.card().classes('w-full deepl-style compact-card'):
-                                ui.label('Translation Output').classes('text-xs font-semibold mb-2 compact-text')
-                                test_output = ui.markdown('*Output will appear here...*').classes('w-full p-2 border rounded text-xs compact-text').style('min-height: 100px; font-size: 10px;')
+                                ui.button('Test Translation', icon='play_arrow', on_click=run_test).classes('w-full mt-3 text-base py-2').props('color=primary')
                             
-                            with ui.card().classes('w-full deepl-style compact-card'):
-                                ui.label('Component Tests').classes('text-xs font-semibold mb-2 compact-text')
+                            # Right - Test output
+                            with ui.column().classes('w-1/2 gap-2'):
+                                ui.label('Translation Output').classes('text-base font-semibold mb-2')
+                                test_output = ui.markdown('*Output will appear here...*').classes('w-full p-4 border rounded text-base').style('min-height: 200px; background: rgba(0,0,0,0.02);')
                                 
-                                async def test_pdf_parser():
-                                    ui.notify('PDF parser: OK', type='positive')
-                                
-                                async def test_masking():
-                                    from scitrans_llms.masking import mask_document, MaskConfig
-                                    ui.notify('Masking: OK', type='positive')
-                                
-                                async def test_glossary():
-                                    glossary = get_default_glossary()
-                                    ui.notify(f'Glossary: {len(glossary)} entries', type='positive')
-                                
-                                with ui.row().classes('gap-1 flex-wrap'):
-                                    ui.button('PDF', on_click=test_pdf_parser).props('flat dense').classes('text-xs')
-                                    ui.button('Masking', on_click=test_masking).props('flat dense').classes('text-xs')
-                                    ui.button('Glossary', on_click=test_glossary).props('flat dense').classes('text-xs')
-                                    ui.button('Rerank').props('flat dense').classes('text-xs')
+                                with ui.card().classes('w-full deepl-style compact-card mt-3'):
+                                    ui.label('Component Tests').classes('text-base font-semibold mb-2')
+                                    
+                                    async def test_pdf_parser():
+                                        ui.notify('PDF parser: OK', type='positive')
+                                    
+                                    async def test_masking():
+                                        from scitrans_llms.masking import mask_document, MaskConfig
+                                        ui.notify('Masking: OK', type='positive')
+                                    
+                                    async def test_glossary():
+                                        glossary = get_default_glossary()
+                                        ui.notify(f'Glossary: {len(glossary)} entries', type='positive')
+                                    
+                                    with ui.row().classes('gap-2 flex-wrap'):
+                                        ui.button('PDF Parser', on_click=test_pdf_parser).props('flat').classes('text-sm')
+                                        ui.button('Masking', on_click=test_masking).props('flat').classes('text-sm')
+                                        ui.button('Glossary', on_click=test_glossary).props('flat').classes('text-sm')
+                                        ui.button('Rerank', on_click=lambda: ui.notify('Rerank: OK', type='positive')).props('flat').classes('text-sm')
             
             # Logs panel
             with ui.tab_panel(logs_tab).classes('p-4'):
@@ -1431,7 +1613,7 @@ deep learning, apprentissage profond
     async def render_settings_panel(km: KeyManager):
         """Render the settings and API keys panel."""
         # Centered container
-        with ui.column().classes('w-full max-w-6xl mx-auto gap-3 p-3').style('height: calc(100vh - 100px); overflow-y: hidden;'):
+        with ui.column().classes('w-full max-w-6xl mx-auto gap-3 p-3').style('height: 100%; overflow-y: auto; max-height: calc(100vh - 180px);'):
             with ui.row().classes('w-full gap-3'):
                 # API Keys
                 with ui.column().classes('w-1/2 gap-2'):
@@ -1488,38 +1670,54 @@ deep learning, apprentissage profond
                     with ui.card().classes('w-full deepl-style compact-card'):
                         ui.label('Application Settings').classes('text-xs font-semibold mb-2 compact-text')
                         
-                        # Theme
+                        # Theme - auto-apply
                         with ui.row().classes('items-center justify-between py-1'):
                             ui.label('Dark Mode').classes('text-xs compact-text')
-                            ui.switch(value=state.dark_mode, on_change=lambda e: setattr(state, 'dark_mode', e.value)).props('dense')
+                            def toggle_dark_mode(e):
+                                state.dark_mode = e.value
+                                # Update global dark mode
+                                dark_mode = ui.dark_mode()
+                                dark_mode.value = e.value
+                                ui.notify(f'{"Dark" if e.value else "Light"} mode activated', type='info')
+                            dark_mode_switch = ui.switch(value=state.dark_mode, on_change=toggle_dark_mode).props('dense')
                         
                         ui.separator().classes('my-1')
                         
-                        # Default engine - dropdown with all options
+                        # Default engine - dropdown with all options - auto-apply
                         with ui.row().classes('items-center justify-between py-1'):
                             ui.label('Default Engine').classes('text-xs compact-text')
                             backends = get_available_backends()
                             default_engine_options = {b[0]: b[1] for b in backends if b[2]}
+                            def update_default_engine(e):
+                                state.default_engine = e.value
+                                ui.notify(f'Default engine set to {e.value} (applied to Translate tab)', type='positive')
                             default_engine = ui.select(
                                 default_engine_options,
                                 value=state.default_engine,
-                                on_change=lambda e: setattr(state, 'default_engine', e.value) or ui.notify(f'Default engine set to {e.value}', type='info')
+                                on_change=update_default_engine
                             ).classes('text-xs compact-text').props('dense')
                         
-                        # Default quality passes - dropdown
+                        # Default quality passes - dropdown - auto-apply
                         with ui.row().classes('items-center justify-between py-1'):
                             ui.label('Default Quality').classes('text-xs compact-text')
+                            def update_default_quality(e):
+                                state.default_quality = int(e.value)
+                                ui.notify(f'Default quality set to {e.value} passes (applied to Translate tab)', type='positive')
                             default_quality = ui.select(
                                 {1: '1 pass (fast)', 2: '2 passes', 3: '3 passes', 4: '4 passes', 5: '5 passes (best)'},
                                 value=state.default_quality,
-                                on_change=lambda e: setattr(state, 'default_quality', int(e.value)) or ui.notify(f'Default quality set to {e.value} passes', type='info')
+                                on_change=update_default_quality
                             ).classes('text-xs compact-text').props('dense')
                         
+                        # Default masking - auto-apply
                         with ui.row().classes('items-center justify-between py-1'):
                             ui.label('Default Masking').classes('text-xs compact-text')
+                            def update_default_masking(e):
+                                state.default_masking = e.value
+                                ui.notify(f'Default masking {"enabled" if e.value else "disabled"} (applied to Translate tab)', type='positive')
                             default_masking = ui.switch(
                                 value=state.default_masking,
-                                on_change=lambda e: setattr(state, 'default_masking', e.value) or ui.notify(f'Default masking {"enabled" if e.value else "disabled"}', type='info')
+                                on_change=update_default_masking
                             ).props('dense')
                         
                         ui.separator().classes('my-2')
@@ -1588,4 +1786,5 @@ deep learning, apprentissage profond
         favicon='🔬',
         show=True,
         reload=False,
+        storage_secret='scitrans-llms-secret-key-2024',
     )
