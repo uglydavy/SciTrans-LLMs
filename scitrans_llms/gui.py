@@ -1,7 +1,7 @@
 """SciTrans-LLMs GUI - Scientific Document Translation Interface"""
 
 from __future__ import annotations
-import base64, json, logging, tempfile
+import base64, json, logging, tempfile, asyncio, shutil
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -17,7 +17,7 @@ def log_event(msg: str, level: str = "INFO"):
     (logger.error if level == "ERROR" else logger.info)(msg)
 
 def launch(port: int = 7860, share: bool = False):
-    from nicegui import ui, events
+    from nicegui import ui, app
     from scitrans_llms.keys import KeyManager
     from scitrans_llms.pipeline import PipelineConfig, TranslationPipeline, translate_document
     from scitrans_llms.translate.glossary import get_default_glossary, Glossary, GlossaryEntry
@@ -32,10 +32,16 @@ def launch(port: int = 7860, share: bool = False):
         default_masking = True
         default_reranking = False
         quality_passes = 1
+        context_window = 5
+        translate_tables = False
+        translate_figures = False
+        preserve_structure = True  # NEW: preserve section numbers, bullets
+        use_mineru = False  # NEW: use minerU for extraction
         uploaded_pdf_path = None
         uploaded_pdf_name = None
         translated_pdf_path = None
         custom_glossary = None
+        corpus_dictionary = {}  # NEW: loaded corpus dictionary
     
     state = State()
     
@@ -51,14 +57,14 @@ def launch(port: int = 7860, share: bool = False):
             import fitz
             doc = fitz.open(path)
             if len(doc) > 0:
-                pix = doc[0].get_pixmap(matrix=fitz.Matrix(1.2, 1.2))
+                pix = doc[0].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
                 b64 = base64.b64encode(pix.tobytes("png")).decode()
                 doc.close()
-                return f'<img src="data:image/png;base64,{b64}" style="max-width:100%;max-height:200px;border-radius:8px;"/>'
+                return f'<img src="data:image/png;base64,{b64}" style="max-width:100%;max-height:280px;border-radius:4px;"/>'
             doc.close()
         except Exception as ex:
             log_event(f"Preview error: {ex}", "ERROR")
-        return '<div style="padding:20px;text-align:center;color:#888;background:#333;border-radius:8px;">No preview</div>'
+        return '<div style="padding:40px;text-align:center;color:#888;">No preview available</div>'
     
     def parse_gloss(content: bytes, fname: str):
         try:
@@ -84,350 +90,634 @@ def launch(port: int = 7860, share: bool = False):
             return None
     
     CSS = """<style>
-html,body{margin:0;padding:0;overflow:hidden!important;height:100vh!important}
-.nicegui-content,.q-page-container{height:calc(100vh - 60px)!important;overflow:hidden!important}
-.q-tab-panels,.q-tab-panel{height:100%!important;overflow:hidden!important;padding:0!important}
-.main-row{display:flex;height:calc(100vh - 110px);gap:12px;padding:12px;overflow:hidden}
-.panel{flex:1;height:100%;overflow-y:auto;padding:8px}
-.panel::-webkit-scrollbar{width:5px}
-.panel::-webkit-scrollbar-thumb{background:#555;border-radius:3px}
-.card{background:rgba(40,40,50,0.9);border-radius:10px;padding:12px;margin-bottom:10px}
-.upload-box{border:2px dashed #6366f1;border-radius:8px;padding:16px;text-align:center;background:rgba(99,102,241,0.1)}
+:root { --bg-card: rgba(30,35,45,0.95); --border: rgba(100,100,120,0.3); }
+html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!important; }
+.nicegui-content, .q-page-container { height:calc(100vh - 52px)!important; overflow:hidden!important; }
+.q-tab-panels, .q-tab-panel { height:100%!important; overflow:hidden!important; padding:0!important; }
+.main-row { display:flex; width:100%; height:calc(100vh - 100px); padding:8px 16px; gap:16px; box-sizing:border-box; }
+.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+.panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:14px; }
+.card-title { font-weight:600; font-size:14px; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+.upload-zone { border:2px dashed var(--border); border-radius:6px; padding:20px; text-align:center; cursor:pointer; transition:all 0.2s; }
+.upload-zone:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
+body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
+body.body--light .q-header { background:#4f46e5!important; }
+body.body--light .q-tab-panels { background:#f5f5f5!important; }
 </style>"""
     
     @ui.page('/')
-    def main():
+    async def main():
         ui.add_head_html(CSS)
         dark = ui.dark_mode()
         dark.enable()
         log_event("Page loaded")
         
-        with ui.header().classes('bg-indigo-700 items-center px-4'):
-            ui.icon('science').classes('text-white text-xl')
-            ui.label('SciTrans-LLMs').classes('text-lg font-bold text-white ml-2')
+        # Header
+        with ui.header().classes('bg-indigo-700 items-center px-4 h-12'):
+            ui.label('SciTrans-LLMs').classes('text-lg font-bold text-white')
+            ui.space()
+            ui.label('Scientific Document Translation').classes('text-sm text-white opacity-80')
             ui.space()
             def toggle_dark():
-                if dark.value:
-                    dark.disable()
-                else:
-                    dark.enable()
+                if dark.value: dark.disable()
+                else: dark.enable()
                 state.dark_mode = dark.value
-                log_event(f"Dark: {state.dark_mode}")
-            ui.button(icon='dark_mode', on_click=toggle_dark).props('flat round dense text-color=white')
+                log_event(f"Theme: {'dark' if state.dark_mode else 'light'}")
+            ui.button(icon='contrast', on_click=toggle_dark).props('flat round dense text-color=white size=sm')
         
-        with ui.tabs().classes('w-full bg-gray-800') as tabs:
-            t1 = ui.tab('Translate', icon='translate')
-            t2 = ui.tab('Glossary', icon='book')
-            t3 = ui.tab('Developer', icon='code')
-            t4 = ui.tab('Settings', icon='settings')
+        # Tabs
+        with ui.tabs().classes('w-full bg-gray-800 text-white') as tabs:
+            t_translate = ui.tab('Translate')
+            t_testing = ui.tab('Testing')
+            t_glossary = ui.tab('Glossary')
+            t_developer = ui.tab('Developer')
+            t_settings = ui.tab('Settings')
         
-        with ui.tab_panels(tabs, value=t1).classes('w-full flex-grow'):
+        with ui.tab_panels(tabs, value=t_translate).classes('w-full flex-grow'):
             
-            # TRANSLATE TAB
-            with ui.tab_panel(t1).classes('p-0'):
+            # ==================== TRANSLATE TAB ====================
+            with ui.tab_panel(t_translate).classes('p-0'):
                 with ui.element('div').classes('main-row'):
+                    # LEFT PANEL
                     with ui.element('div').classes('panel'):
+                        # Source Document
                         with ui.element('div').classes('card'):
-                            ui.label('📁 Source').classes('font-bold mb-2')
-                            upload_label = ui.label('No file').classes('text-sm opacity-70 mb-2')
-                            with ui.element('div').classes('upload-box'):
-                                ui.icon('cloud_upload').classes('text-3xl opacity-60')
-                                ui.label('Upload PDF').classes('text-sm')
-                                def on_upload(e: events.UploadEventArguments):
+                            ui.label('Source Document').classes('card-title')
+                            upload_status = ui.label('No file selected').classes('text-sm opacity-70 mb-2')
+                            
+                            with ui.element('div').classes('upload-zone') as upload_zone:
+                                ui.label('Click to upload or drag & drop').classes('text-sm')
+                                ui.label('PDF, DOCX, HTML').classes('text-xs opacity-50')
+                                
+                                async def handle_upload(e):
                                     try:
-                                        content = e.content.read()
-                                        fname = getattr(e, 'name', 'doc.pdf')
+                                        # Handle different NiceGUI upload event formats
+                                        files = getattr(e, 'files', None) or getattr(e.sender, 'files', [])
+                                        if not files:
+                                            # Try reading from content
+                                            if hasattr(e, 'content'):
+                                                content = e.content.read() if hasattr(e.content, 'read') else e.content
+                                                fname = getattr(e, 'name', 'document.pdf')
+                                            else:
+                                                raise ValueError("No file data found")
+                                        else:
+                                            f = files[0] if isinstance(files, list) else files
+                                            content = f.read() if hasattr(f, 'read') else f
+                                            fname = getattr(f, 'name', 'document.pdf')
+                                        
                                         tmp = Path(tempfile.mkdtemp()) / fname
-                                        tmp.write_bytes(content)
+                                        if isinstance(content, bytes):
+                                            tmp.write_bytes(content)
+                                        else:
+                                            shutil.copy(content, tmp)
+                                        
                                         state.uploaded_pdf_path = str(tmp)
                                         state.uploaded_pdf_name = fname
-                                        upload_label.text = f'✅ {fname}'
-                                        preview_box.set_content(get_preview(str(tmp)))
+                                        upload_status.text = f'Loaded: {fname}'
+                                        preview_html.set_content(get_preview(str(tmp)))
                                         log_event(f"Uploaded: {fname}")
-                                        ui.notify(f'Uploaded: {fname}', type='positive')
+                                        ui.notify(f'File loaded: {fname}', type='positive')
                                     except Exception as ex:
                                         log_event(f"Upload error: {ex}", "ERROR")
-                                        ui.notify(f'Error: {ex}', type='negative')
-                                ui.upload(on_upload=on_upload, auto_upload=True).props('accept=".pdf"').classes('w-full')
-                            ui.label('Or URL:').classes('text-xs mt-2 opacity-70')
-                            with ui.row().classes('w-full gap-2'):
-                                url_in = ui.input(placeholder='https://...').classes('flex-grow').props('dense')
-                                def fetch():
-                                    url = url_in.value
+                                        ui.notify(f'Upload failed: {str(ex)[:50]}', type='negative')
+                                
+                                ui.upload(on_upload=handle_upload, auto_upload=True).props('accept=".pdf,.docx,.html"').classes('w-full')
+                            
+                            ui.label('Or enter URL:').classes('text-xs mt-3 opacity-70')
+                            with ui.row().classes('w-full gap-2 items-center'):
+                                url_input = ui.input(placeholder='https://arxiv.org/pdf/...').classes('flex-grow')
+                                
+                                async def fetch_url():
+                                    url = url_input.value.strip()
                                     if not url:
-                                        ui.notify('Enter URL', type='warning')
+                                        ui.notify('Enter a URL', type='warning')
                                         return
+                                    upload_status.text = 'Fetching...'
                                     try:
                                         import urllib.request
                                         log_event(f"Fetching: {url}")
                                         tmp = Path(tempfile.mkdtemp())
-                                        fname = url.split('/')[-1] or 'doc.pdf'
+                                        fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
+                                        if not fname.endswith('.pdf'): fname += '.pdf'
                                         fpath = tmp / fname
-                                        urllib.request.urlretrieve(url, fpath)
+                                        
+                                        # Use async to prevent blocking
+                                        loop = asyncio.get_event_loop()
+                                        await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
+                                        
                                         state.uploaded_pdf_path = str(fpath)
                                         state.uploaded_pdf_name = fname
-                                        upload_label.text = f'✅ {fname}'
-                                        preview_box.set_content(get_preview(str(fpath)))
+                                        upload_status.text = f'Loaded: {fname}'
+                                        preview_html.set_content(get_preview(str(fpath)))
                                         log_event(f"Downloaded: {fname}")
-                                        ui.notify('Downloaded', type='positive')
+                                        ui.notify('PDF downloaded', type='positive')
                                     except Exception as ex:
+                                        upload_status.text = 'Download failed'
                                         log_event(f"URL error: {ex}", "ERROR")
-                                        ui.notify(f'Error: {ex}', type='negative')
-                                ui.button('Get', on_click=fetch).props('dense')
+                                        ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
+                                
+                                ui.button('Fetch', on_click=fetch_url).props('dense')
+                        
+                        # Translation Settings
                         with ui.element('div').classes('card'):
-                            ui.label('⚙️ Settings').classes('font-bold mb-2')
-                            with ui.row().classes('gap-2'):
-                                direction = ui.select({'en-fr': 'EN→FR', 'fr-en': 'FR→EN'}, value='en-fr', label='Dir').classes('w-24')
-                                engine = ui.select(get_engines(), value='free', label='Engine').classes('w-28')
-                            with ui.row().classes('gap-2 mt-1'):
-                                pages = ui.input(label='Pages', value='all').classes('w-20').props('dense')
-                                quality = ui.number(label='Q', value=1, min=1, max=5).classes('w-16').props('dense')
-                            with ui.row().classes('gap-2 mt-1'):
-                                masking = ui.checkbox('Mask', value=True)
-                                reranking = ui.checkbox('Rerank', value=False)
+                            ui.label('Translation Settings').classes('card-title')
+                            with ui.row().classes('w-full gap-4'):
+                                direction = ui.select({'en-fr': 'English to French', 'fr-en': 'French to English'}, value='en-fr', label='Direction').classes('flex-grow')
+                                engine = ui.select(get_engines(), value=state.default_engine, label='Engine').classes('flex-grow')
+                            with ui.row().classes('w-full gap-4 mt-2'):
+                                pages = ui.input(label='Pages', value='all', placeholder='all, 1-5, 1,3,5').classes('w-1/3')
+                                quality = ui.number(label='Quality passes', value=state.quality_passes, min=1, max=5).classes('w-1/3')
+                        
+                        # Advanced Settings
                         with ui.element('div').classes('card'):
-                            ui.label('📖 Glossary').classes('font-bold mb-1')
-                            gloss_label = ui.label('Default active').classes('text-xs opacity-70')
-                            def on_gloss(e):
+                            with ui.expansion('Advanced Settings', icon='tune').classes('w-full'):
+                                with ui.row().classes('gap-4 flex-wrap'):
+                                    masking_chk = ui.checkbox('Mask formulas/URLs', value=state.default_masking)
+                                    rerank_chk = ui.checkbox('Enable reranking', value=state.default_reranking)
+                                with ui.row().classes('gap-4 flex-wrap mt-2'):
+                                    tables_chk = ui.checkbox('Translate tables', value=state.translate_tables)
+                                    figures_chk = ui.checkbox('Translate figures', value=state.translate_figures)
+                                with ui.row().classes('gap-4 flex-wrap mt-2'):
+                                    structure_chk = ui.checkbox('Preserve numbering (1.1, I., etc.)', value=state.preserve_structure)
+                                    mineru_chk = ui.checkbox('Use minerU extraction', value=state.use_mineru)
+                                ui.number(label='Context window (segments)', value=state.context_window, min=1, max=20).classes('w-full mt-2')
+                                ui.label('minerU provides better extraction for complex layouts').classes('text-xs opacity-50 mt-1')
+                        
+                        # Glossary
+                        with ui.element('div').classes('card'):
+                            ui.label('Custom Glossary (optional)').classes('card-title')
+                            gloss_status = ui.label('Using default glossary').classes('text-xs opacity-70')
+                            
+                            async def handle_gloss(e):
                                 try:
-                                    g = parse_gloss(e.content.read(), getattr(e, 'name', 'g.csv'))
+                                    if hasattr(e, 'content'):
+                                        content = e.content.read() if hasattr(e.content, 'read') else e.content
+                                    else:
+                                        content = b''
+                                    fname = getattr(e, 'name', 'glossary.csv')
+                                    g = parse_gloss(content, fname)
                                     if g:
                                         state.custom_glossary = g
-                                        gloss_label.text = f'✅ {len(g.entries)} terms'
+                                        gloss_status.text = f'Custom: {len(g.entries)} terms loaded'
+                                        ui.notify(f'{len(g.entries)} terms loaded', type='positive')
                                 except Exception as ex:
-                                    gloss_label.text = f'❌ {ex}'
-                            ui.upload(on_upload=on_gloss, auto_upload=True).props('accept=".csv,.txt,.json" label="Custom"').classes('w-full')
-                        translate_btn = ui.button('🚀 TRANSLATE').classes('w-full').props('color=primary size=lg')
+                                    gloss_status.text = f'Error: {str(ex)[:30]}'
+                            
+                            ui.upload(on_upload=handle_gloss, auto_upload=True).props('accept=".csv,.txt,.json" label="Upload glossary"').classes('w-full')
+                        
+                        # Translate Button
+                        translate_btn = ui.button('Translate Document').classes('w-full').props('color=primary size=lg')
+                    
+                    # RIGHT PANEL
                     with ui.element('div').classes('panel'):
+                        with ui.element('div').classes('card').style('flex:1;'):
+                            ui.label('Document Preview').classes('card-title')
+                            preview_html = ui.html('<div style="padding:40px;text-align:center;color:#666;">Upload a document to preview</div>', sanitize=False).style('min-height:200px;')
+                        
                         with ui.element('div').classes('card'):
-                            ui.label('👁️ Preview').classes('font-bold mb-2')
-                            preview_box = ui.html('<div style="padding:20px;text-align:center;color:#888;">Upload PDF</div>', sanitize=False)
+                            ui.label('Translation Progress').classes('card-title')
+                            prog_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
+                            prog_text = ui.label('Ready').classes('text-sm opacity-70 mt-1')
+                            log_area = ui.textarea().props('readonly rows=4').classes('w-full mt-2 text-xs font-mono')
+                        
                         with ui.element('div').classes('card'):
-                            ui.label('📊 Progress').classes('font-bold mb-2')
-                            prog_bar = ui.linear_progress(value=0).classes('w-full')
-                            prog_text = ui.label('Ready').classes('text-sm opacity-70')
-                            log_box = ui.textarea().props('readonly rows=4').classes('w-full mt-1 text-xs')
-                        with ui.element('div').classes('card'):
-                            dl_btn = ui.button('⬇️ Download').classes('w-full').props('color=positive size=lg disabled')
-                def do_translate():
+                            download_btn = ui.button('Download Translated Document').classes('w-full').props('color=positive size=lg disabled')
+                
+                # Translate logic
+                async def do_translate():
                     if not state.uploaded_pdf_path:
-                        ui.notify('Upload PDF first', type='warning')
+                        ui.notify('Upload a document first', type='warning')
                         return
                     translate_btn.disable()
-                    dl_btn.props('disabled')
+                    download_btn.props('disabled')
                     prog_bar.value = 0
                     logs = []
+                    
                     def log(m):
                         logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
-                        log_box.value = '\n'.join(logs[-8:])
+                        log_area.value = '\n'.join(logs[-6:])
                         log_event(m)
+                    
                     try:
-                        log("Starting...")
+                        log("Starting translation...")
                         prog_bar.value = 0.1
-                        prog_text.text = "Parsing..."
+                        prog_text.text = "Parsing document..."
+                        
                         inp = Path(state.uploaded_pdf_path)
                         out = Path(tempfile.mkdtemp()) / f'translated_{inp.name}'
-                        log(f"Engine: {engine.value}")
+                        
+                        log(f"Engine: {engine.value}, Direction: {direction.value}")
+                        
                         def cb(m):
                             log(m)
                             if 'pars' in m.lower(): prog_bar.value = 0.2
                             elif 'translat' in m.lower(): prog_bar.value = 0.5
-                            elif 'render' in m.lower(): prog_bar.value = 0.8
-                        prog_bar.value = 0.3
+                            elif 'render' in m.lower(): prog_bar.value = 0.85
+                        
+                        await asyncio.sleep(0.1)  # Allow UI update
+                        prog_bar.value = 0.25
                         prog_text.text = "Translating..."
-                        result = translate_document(input_path=str(inp), output_path=str(out), engine=engine.value, direction=direction.value, pages=pages.value, quality_loops=int(quality.value), progress=cb)
+                        
+                        # Run translation in executor to avoid blocking
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(None, lambda: translate_document(
+                            input_path=str(inp), output_path=str(out), engine=engine.value,
+                            direction=direction.value, pages=pages.value, quality_loops=int(quality.value), progress=cb
+                        ))
+                        
                         prog_bar.value = 1.0
                         if result.success:
-                            log("✅ Done!")
-                            prog_text.text = "Complete!"
+                            log("Translation complete")
+                            prog_text.text = "Complete"
                             if out.exists():
                                 state.translated_pdf_path = str(out)
-                                dl_btn.props(remove='disabled')
-                                preview_box.set_content(get_preview(str(out)))
-                            ui.notify('Done!', type='positive')
+                                download_btn.props(remove='disabled')
+                                preview_html.set_content(get_preview(str(out)))
+                            ui.notify('Translation complete', type='positive')
                         else:
-                            log(f"⚠️ {result.errors}")
-                            prog_text.text = "Errors"
+                            log(f"Errors: {result.errors[:2]}")
+                            prog_text.text = "Completed with errors"
                     except Exception as ex:
-                        log(f"❌ {ex}")
-                        prog_text.text = f"Error"
-                        log_event(f"Error: {ex}", "ERROR")
+                        log(f"Error: {ex}")
+                        prog_text.text = "Error"
+                        log_event(f"Translation error: {ex}", "ERROR")
                     finally:
                         translate_btn.enable()
+                
                 translate_btn.on_click(do_translate)
-                dl_btn.on_click(lambda: ui.download(state.translated_pdf_path) if state.translated_pdf_path else None)
+                download_btn.on_click(lambda: ui.download(state.translated_pdf_path) if state.translated_pdf_path else None)
             
-            # GLOSSARY TAB
-            with ui.tab_panel(t2).classes('p-0'):
+            # ==================== TESTING TAB ====================
+            with ui.tab_panel(t_testing).classes('p-0'):
+                with ui.element('div').classes('main-row'):
+                    # LEFT - Input & Settings
+                    with ui.element('div').classes('panel'):
+                        with ui.element('div').classes('card'):
+                            ui.label('Text Translation Test').classes('card-title')
+                            test_input = ui.textarea(label='Source text', placeholder='Enter text to translate...').props('rows=6').classes('w-full')
+                            with ui.row().classes('w-full gap-4 mt-2'):
+                                test_dir = ui.select({'en-fr': 'EN → FR', 'fr-en': 'FR → EN'}, value='en-fr', label='Direction').classes('w-1/3')
+                                test_eng = ui.select(get_engines(), value='dictionary', label='Engine').classes('w-1/3')
+                                test_passes = ui.number(label='Passes', value=1, min=1, max=5).classes('w-1/4')
+                        
+                        with ui.element('div').classes('card'):
+                            ui.label('Test Options').classes('card-title')
+                            with ui.row().classes('gap-4 flex-wrap'):
+                                test_mask = ui.checkbox('Enable masking', value=True)
+                                test_rerank = ui.checkbox('Enable reranking', value=False)
+                                test_gloss = ui.checkbox('Use glossary', value=True)
+                            with ui.row().classes('gap-4 flex-wrap mt-2'):
+                                test_tables = ui.checkbox('Translate tables', value=False)
+                                test_formulas = ui.checkbox('Translate formulas', value=False)
+                        
+                        with ui.row().classes('w-full gap-2 mt-2'):
+                            test_run_btn = ui.button('Run Translation').props('color=primary')
+                            test_clear_btn = ui.button('Clear').props('outline')
+                    
+                    # RIGHT - Output & Metrics
+                    with ui.element('div').classes('panel'):
+                        with ui.element('div').classes('card'):
+                            ui.label('Translation Output').classes('card-title')
+                            test_output = ui.textarea(label='Result').props('rows=6 readonly').classes('w-full')
+                            test_status = ui.label('').classes('text-xs opacity-70 mt-1')
+                        
+                        with ui.element('div').classes('card'):
+                            ui.label('Evaluation Metrics').classes('card-title')
+                            with ui.row().classes('w-full gap-8'):
+                                with ui.column():
+                                    ui.label('BLEU Score').classes('text-xs opacity-70')
+                                    bleu_label = ui.label('--').classes('text-lg font-bold')
+                                with ui.column():
+                                    ui.label('Terms Used').classes('text-xs opacity-70')
+                                    terms_label = ui.label('--').classes('text-lg font-bold')
+                                with ui.column():
+                                    ui.label('Blocks').classes('text-xs opacity-70')
+                                    blocks_label = ui.label('--').classes('text-lg font-bold')
+                            
+                            ui.label('Reference (for BLEU)').classes('text-xs opacity-70 mt-3')
+                            test_ref = ui.textarea(placeholder='Optional: paste reference translation for BLEU score').props('rows=3').classes('w-full')
+                        
+                        with ui.element('div').classes('card'):
+                            ui.label('Ablation Study').classes('card-title')
+                            ui.label('Compare configurations to measure component contributions').classes('text-xs opacity-70 mb-2')
+                            ablation_btn = ui.button('Run Ablation (coming soon)').props('outline disabled')
+                
+                def run_test():
+                    if not test_input.value:
+                        ui.notify('Enter text first', type='warning')
+                        return
+                    test_status.text = 'Translating...'
+                    try:
+                        s, t = test_dir.value.split('-')
+                        config = PipelineConfig(
+                            source_lang=s, target_lang=t, translator_backend=test_eng.value,
+                            enable_masking=test_mask.value, enable_glossary=test_gloss.value,
+                            enable_refinement=test_rerank.value, num_candidates=int(test_passes.value)
+                        )
+                        pipeline = TranslationPipeline(config)
+                        doc = Document.from_text(test_input.value, s, t)
+                        result = pipeline.translate(doc)
+                        test_output.value = result.translated_text
+                        blocks_label.text = str(result.stats.get('translated_blocks', 0))
+                        terms_label.text = str(len(result.stats.get('glossary_terms_used', [])) if 'glossary_terms_used' in result.stats else result.stats.get('refined_blocks', 0))
+                        
+                        # Calculate BLEU if reference provided
+                        if test_ref.value.strip():
+                            try:
+                                from sacrebleu.metrics import BLEU
+                                bleu = BLEU()
+                                score = bleu.sentence_score(result.translated_text, [test_ref.value])
+                                bleu_label.text = f'{score.score:.1f}'
+                            except:
+                                bleu_label.text = 'N/A'
+                        else:
+                            bleu_label.text = '--'
+                        
+                        test_status.text = 'Complete'
+                        log_event(f"Test completed: {test_eng.value}")
+                    except Exception as ex:
+                        test_output.value = f'Error: {ex}'
+                        test_status.text = 'Error'
+                        log_event(f"Test error: {ex}", "ERROR")
+                
+                test_run_btn.on_click(run_test)
+                test_clear_btn.on_click(lambda: (setattr(test_input, 'value', ''), setattr(test_output, 'value', ''), setattr(bleu_label, 'text', '--'), setattr(terms_label, 'text', '--'), setattr(blocks_label, 'text', '--')))
+            
+            # ==================== GLOSSARY TAB ====================
+            with ui.tab_panel(t_glossary).classes('p-0'):
                 with ui.element('div').classes('main-row'):
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
-                            ui.label('📚 Default Glossary').classes('font-bold mb-2')
-                            search = ui.input(placeholder='Search...').classes('w-full').props('dense')
-                            domain_sel = ui.select(['All', 'ml', 'math', 'stats'], value='All', label='Domain').classes('w-32')
+                            ui.label('Default Scientific Glossary').classes('card-title')
+                            with ui.row().classes('w-full gap-4 mb-2'):
+                                search = ui.input(label='Search terms').classes('flex-grow')
+                                domain_sel = ui.select(['All', 'ml', 'math', 'stats', 'physics', 'chemistry', 'general'], value='All', label='Domain').classes('w-32')
                             try:
                                 g = get_default_glossary()
-                                all_e = [{'en': e.source, 'fr': e.target, 'dom': e.domain} for e in g.entries]
+                                all_entries = [{'en': e.source, 'fr': e.target, 'domain': e.domain} for e in g.entries]
                             except:
-                                all_e = []
-                            tbl = ui.table(columns=[{'name': 'en', 'label': 'EN', 'field': 'en'}, {'name': 'fr', 'label': 'FR', 'field': 'fr'}, {'name': 'dom', 'label': 'Dom', 'field': 'dom'}], rows=all_e[:25], row_key='en', pagination=8).classes('w-full')
-                            def filt():
+                                all_entries = []
+                            tbl = ui.table(
+                                columns=[{'name': 'en', 'label': 'English', 'field': 'en', 'sortable': True}, {'name': 'fr', 'label': 'French', 'field': 'fr', 'sortable': True}, {'name': 'domain', 'label': 'Domain', 'field': 'domain'}],
+                                rows=all_entries[:30], row_key='en', pagination=10
+                            ).classes('w-full')
+                            
+                            def filter_tbl():
                                 s, d = search.value.lower(), domain_sel.value
-                                tbl.rows = [e for e in all_e if (d == 'All' or e['dom'] == d) and (not s or s in e['en'].lower() or s in e['fr'].lower())][:25]
-                            search.on('keyup', filt)
-                            domain_sel.on('change', filt)
+                                tbl.rows = [e for e in all_entries if (d == 'All' or e['domain'] == d) and (not s or s in e['en'].lower() or s in e['fr'].lower())][:30]
+                            search.on('keyup', filter_tbl)
+                            domain_sel.on('change', filter_tbl)
+                    
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
-                            ui.label('🌐 Corpus').classes('font-bold mb-2')
-                            ui.label('Load parallel corpora:').classes('text-xs opacity-70 mb-2')
-                            corp_lbl = ui.label('').classes('text-xs')
-                            for cid, nm in [('europarl', '🇪🇺 Europarl'), ('opus', '📖 OPUS'), ('elg', '🔬 ELG')]:
-                                def load(n=nm):
-                                    corp_lbl.text = f'✅ {n} loaded'
-                                    log_event(f"Corpus: {n}")
-                                    ui.notify(f'{n} loaded', type='positive')
-                                ui.button(nm, on_click=load).props('outline dense').classes('mr-1 mb-1')
-                        with ui.element('div').classes('card'):
-                            ui.label('📤 Custom Upload').classes('font-bold mb-2')
-                            ui.markdown('CSV: `source,target,domain`').classes('text-xs opacity-70')
-                            cust_lbl = ui.label('').classes('text-xs')
-                            def on_cust(e):
+                            ui.label('Parallel Corpus Integration').classes('card-title')
+                            ui.markdown('''
+Parallel corpora provide verified translation pairs from official sources. 
+Download and load corpora to enhance translation quality.
+
+- **Europarl**: European Parliament (~200MB)
+- **EU Constitution**: Smaller, legal domain (~5MB)
+- **Tatoeba**: Community translations (~50MB)
+                            ''').classes('text-sm opacity-80 mb-3')
+                            
+                            corpus_status = ui.label('No corpus loaded').classes('text-xs opacity-70 mb-2')
+                            corpus_progress = ui.linear_progress(value=0, show_value=False).classes('w-full mb-2').style('display:none')
+                            corpus_terms_loaded = ui.label('').classes('text-xs text-green-400')
+                            
+                            async def download_and_load_corpus(corpus_name: str, display_name: str):
                                 try:
-                                    g = parse_gloss(e.content.read(), getattr(e, 'name', 'g.csv'))
+                                    from scitrans_llms.translate.corpus_manager import CorpusManager, get_corpus_dictionary
+                                    
+                                    corpus_progress.style('display:block')
+                                    corpus_status.text = f'Checking {display_name}...'
+                                    
+                                    manager = CorpusManager()
+                                    
+                                    # Check if already downloaded
+                                    if manager.is_downloaded(corpus_name, 'en', 'fr'):
+                                        corpus_status.text = f'Loading {display_name}...'
+                                        corpus_progress.value = 0.5
+                                    else:
+                                        corpus_status.text = f'Downloading {display_name}...'
+                                        
+                                        def progress_cb(msg, pct):
+                                            corpus_progress.value = pct * 0.8
+                                            corpus_status.text = msg[:50]
+                                        
+                                        # Run download in executor
+                                        loop = asyncio.get_event_loop()
+                                        await loop.run_in_executor(
+                                            None,
+                                            lambda: manager.download(corpus_name, 'en', 'fr', progress_cb)
+                                        )
+                                    
+                                    # Build dictionary
+                                    corpus_progress.value = 0.9
+                                    corpus_status.text = 'Building dictionary...'
+                                    
+                                    loop = asyncio.get_event_loop()
+                                    dictionary = await loop.run_in_executor(
+                                        None,
+                                        lambda: manager.build_dictionary(corpus_name, 'en', 'fr', limit=5000)
+                                    )
+                                    
+                                    corpus_progress.value = 1.0
+                                    corpus_status.text = f'{display_name} loaded'
+                                    corpus_terms_loaded.text = f'✓ {len(dictionary)} terms available'
+                                    
+                                    # Store for use in translation
+                                    state.corpus_dictionary = dictionary
+                                    
+                                    log_event(f"Corpus loaded: {display_name} ({len(dictionary)} terms)")
+                                    ui.notify(f'{display_name} loaded with {len(dictionary)} terms', type='positive')
+                                    
+                                except Exception as ex:
+                                    corpus_status.text = f'Error: {str(ex)[:40]}'
+                                    corpus_terms_loaded.text = ''
+                                    log_event(f"Corpus error: {ex}", "ERROR")
+                                    ui.notify(f'Failed to load corpus: {str(ex)[:50]}', type='negative')
+                                finally:
+                                    corpus_progress.style('display:none')
+                            
+                            with ui.row().classes('gap-2 flex-wrap'):
+                                ui.button('Europarl', on_click=lambda: download_and_load_corpus('europarl', 'Europarl')).props('outline dense')
+                                ui.button('EU Constitution', on_click=lambda: download_and_load_corpus('opus-euconst', 'EU Constitution')).props('outline dense')
+                                ui.button('Tatoeba', on_click=lambda: download_and_load_corpus('tatoeba', 'Tatoeba')).props('outline dense')
+                        
+                        with ui.element('div').classes('card'):
+                            ui.label('Upload Custom Glossary').classes('card-title')
+                            ui.markdown('''
+**Supported formats:**
+- CSV: `source,target,domain` (header optional)
+- TXT: tab-separated pairs
+- JSON: `[{"source": "...", "target": "..."}]`
+                            ''').classes('text-xs opacity-70 mb-2')
+                            
+                            custom_status = ui.label('').classes('text-xs')
+                            async def on_custom_gloss(e):
+                                try:
+                                    if hasattr(e, 'content'):
+                                        content = e.content.read() if hasattr(e.content, 'read') else e.content
+                                    else:
+                                        content = b''
+                                    fname = getattr(e, 'name', 'glossary.csv')
+                                    g = parse_gloss(content, fname)
                                     if g:
                                         state.custom_glossary = g
-                                        cust_lbl.text = f'✅ {len(g.entries)} terms'
+                                        custom_status.text = f'Loaded {len(g.entries)} custom terms'
+                                        ui.notify(f'{len(g.entries)} terms loaded', type='positive')
                                 except Exception as ex:
-                                    cust_lbl.text = f'❌ {ex}'
-                            ui.upload(on_upload=on_cust, auto_upload=True).props('accept=".csv,.txt,.json"').classes('w-full')
+                                    custom_status.text = f'Error: {str(ex)[:30]}'
+                            ui.upload(on_upload=on_custom_gloss, auto_upload=True).props('accept=".csv,.txt,.json"').classes('w-full')
             
-            # DEVELOPER TAB
-            with ui.tab_panel(t3).classes('p-0'):
+            # ==================== DEVELOPER TAB ====================
+            with ui.tab_panel(t_developer).classes('p-0'):
                 with ui.element('div').classes('main-row'):
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
-                            ui.label('🧪 Quick Test').classes('font-bold mb-2')
-                            test_in = ui.textarea(placeholder='Text...').props('rows=3').classes('w-full')
-                            with ui.row().classes('gap-1 mt-1'):
-                                test_dir = ui.select(['en-fr', 'fr-en'], value='en-fr').classes('w-20').props('dense')
-                                test_eng = ui.select(get_engines(), value='dictionary').classes('w-24').props('dense')
-                                def run_test():
-                                    if not test_in.value: return
-                                    try:
-                                        s, t = test_dir.value.split('-')
-                                        cfg = PipelineConfig(source_lang=s, target_lang=t, translator_backend=test_eng.value)
-                                        p = TranslationPipeline(cfg)
-                                        d = Document.from_text(test_in.value, s, t)
-                                        r = p.translate(d)
-                                        test_out.value = r.translated_text
-                                        log_event(f"Test: {test_eng.value}")
-                                    except Exception as ex:
-                                        test_out.value = f'Error: {ex}'
-                                ui.button('Run', on_click=run_test).props('dense color=primary')
-                            test_out = ui.textarea(placeholder='Result...').props('rows=3 readonly').classes('w-full mt-1')
-                        with ui.element('div').classes('card'):
-                            ui.label('📋 Logs').classes('font-bold mb-2')
-                            with ui.row().classes('gap-1 mb-1'):
-                                def ref(): logs_box.value = '\n'.join(system_logs[-30:])
-                                def clr(): system_logs.clear(); logs_box.value = ''
-                                def exp():
+                            ui.label('System Logs').classes('card-title')
+                            with ui.row().classes('gap-2 mb-2'):
+                                def refresh(): dev_logs.value = '\n'.join(system_logs[-40:])
+                                def clear(): system_logs.clear(); dev_logs.value = ''
+                                def export():
                                     f = Path(tempfile.mktemp(suffix='.log'))
                                     f.write_text('\n'.join(system_logs))
-                                    ui.download(str(f), 'logs.log')
-                                ui.button('Refresh', on_click=ref).props('dense outline')
-                                ui.button('Clear', on_click=clr).props('dense outline')
-                                ui.button('Export', on_click=exp).props('dense outline')
-                            logs_box = ui.textarea().props('readonly rows=6').classes('w-full text-xs')
-                            logs_box.value = '\n'.join(system_logs[-30:])
+                                    ui.download(str(f), 'scitrans_logs.log')
+                                ui.button('Refresh', on_click=refresh).props('dense outline')
+                                ui.button('Clear', on_click=clear).props('dense outline')
+                                ui.button('Export', on_click=export).props('dense outline')
+                            dev_logs = ui.textarea().props('readonly rows=12').classes('w-full font-mono text-xs')
+                            dev_logs.value = '\n'.join(system_logs[-40:])
+                    
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
-                            ui.label('🖥️ System').classes('font-bold mb-2')
+                            ui.label('System Information').classes('card-title')
                             import sys, platform
-                            for k, v in [('Python', f'{sys.version_info.major}.{sys.version_info.minor}'), ('OS', platform.system()), ('Arch', platform.machine())]:
-                                with ui.row().classes('justify-between'):
-                                    ui.label(k).classes('opacity-70')
-                                    ui.label(v).classes('font-mono text-sm')
-                            for m in ['nicegui', 'fitz', 'numpy']:
+                            info = [('Python', f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}'), ('Platform', platform.system()), ('Architecture', platform.machine())]
+                            for m in ['nicegui', 'fitz', 'numpy', 'sacrebleu']:
                                 try:
                                     mod = __import__(m)
-                                    v = f'✅ {getattr(mod, "__version__", "ok")}'
+                                    info.append((m, getattr(mod, '__version__', 'installed')))
                                 except:
-                                    v = '❌'
-                                with ui.row().classes('justify-between'):
-                                    ui.label(m).classes('opacity-70')
+                                    info.append((m, 'not installed'))
+                            for k, v in info:
+                                with ui.row().classes('w-full justify-between py-1'):
+                                    ui.label(k).classes('opacity-70')
                                     ui.label(v).classes('font-mono text-sm')
+                        
                         with ui.element('div').classes('card'):
-                            ui.label('🔌 Backends').classes('font-bold mb-2')
-                            for nm, desc, ok in [('free', 'Cascade', True), ('dictionary', 'Offline', True), ('openai', 'GPT', bool(km.get_key('openai'))), ('deepseek', 'DS', bool(km.get_key('deepseek'))), ('ollama', 'Local', True)]:
-                                with ui.row().classes('justify-between'):
-                                    ui.label(nm).classes('font-mono text-sm')
-                                    ui.label(f'{"✅" if ok else "⚠️"} {desc}').classes('text-xs opacity-70')
-                        with ui.element('div').classes('card'):
-                            ui.label('📊 Stats').classes('font-bold mb-2')
-                            ui.label(f'Logs: {len(system_logs)}').classes('text-sm')
-                            ui.label(f'Engine: {state.default_engine}').classes('text-sm')
+                            ui.label('Translation Backends').classes('card-title')
+                            backends = [
+                                ('free', 'Smart cascade (Lingva→LibreTranslate→MyMemory)', True),
+                                ('dictionary', 'Offline glossary-based', True),
+                                ('openai', 'GPT-4/GPT-4o', bool(km.get_key('openai'))),
+                                ('deepseek', 'DeepSeek Chat', bool(km.get_key('deepseek'))),
+                                ('anthropic', 'Claude 3', bool(km.get_key('anthropic'))),
+                                ('ollama', 'Local LLM (requires Ollama)', True),
+                            ]
+                            for name, desc, available in backends:
+                                status = 'Ready' if available else 'Needs API key'
+                                color = 'text-green-400' if available else 'text-yellow-400'
+                                with ui.row().classes('w-full justify-between py-1'):
+                                    ui.label(name).classes('font-mono')
+                                    ui.label(f'{status}').classes(f'text-xs {color}')
             
-            # SETTINGS TAB
-            with ui.tab_panel(t4).classes('p-0'):
+            # ==================== SETTINGS TAB ====================
+            with ui.tab_panel(t_settings).classes('p-0'):
                 with ui.element('div').classes('main-row'):
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
-                            ui.label('🔑 API Keys').classes('font-bold mb-2')
-                            svcs = ['openai', 'deepseek', 'anthropic', 'huggingface', 'deepl']
-                            for s in svcs:
-                                k = km.get_key(s)
-                                with ui.row().classes('justify-between items-center mb-1'):
-                                    ui.label(f'{"✅" if k else "❌"} {s}').classes('text-sm')
-                                    ui.label(km._mask_key(k) if k else '-').classes('text-xs opacity-50 font-mono')
-                            ui.separator().classes('my-2')
-                            ui.label('Add Key').classes('font-bold mb-1')
-                            key_svc = ui.select(svcs, value='openai', label='Service').classes('w-full')
-                            key_val = ui.input(label='Key', password=True).classes('w-full')
-                            key_lbl = ui.label('').classes('text-xs')
-                            def save():
-                                if not key_val.value:
-                                    key_lbl.text = '⚠️ Enter key'
+                            ui.label('API Keys').classes('card-title')
+                            ui.label('Configure API keys for premium translation services').classes('text-xs opacity-70 mb-3')
+                            
+                            services = ['openai', 'deepseek', 'anthropic', 'huggingface', 'deepl', 'google']
+                            for svc in services:
+                                k = km.get_key(svc)
+                                status = 'Configured' if k else 'Not set'
+                                color = 'text-green-400' if k else 'text-gray-400'
+                                with ui.row().classes('w-full justify-between py-1'):
+                                    ui.label(svc.capitalize()).classes('font-medium')
+                                    ui.label(status).classes(f'text-xs {color}')
+                            
+                            ui.separator().classes('my-3')
+                            key_svc = ui.select(services, value='openai', label='Service').classes('w-full')
+                            key_val = ui.input(label='API Key', password=True).classes('w-full')
+                            key_msg = ui.label('').classes('text-xs')
+                            
+                            def save_key():
+                                if not key_val.value.strip():
+                                    key_msg.text = 'Enter a key'
                                     return
                                 try:
-                                    st = km.set_key(key_svc.value, key_val.value.strip())
-                                    key_lbl.text = f'✅ Saved to {st}'
+                                    storage = km.set_key(key_svc.value, key_val.value.strip())
+                                    key_msg.text = f'Saved to {storage}'
                                     key_val.value = ''
-                                    log_event(f"Key: {key_svc.value}")
-                                    ui.notify('Saved', type='positive')
+                                    log_event(f"API key saved: {key_svc.value}")
+                                    ui.notify('Key saved', type='positive')
                                 except Exception as ex:
-                                    key_lbl.text = f'❌ {ex}'
-                            ui.button('Save', on_click=save).classes('w-full mt-1')
+                                    key_msg.text = f'Error: {ex}'
+                            ui.button('Save Key', on_click=save_key).classes('w-full mt-2')
+                    
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
-                            ui.label('⚙️ Defaults').classes('font-bold mb-2')
-                            def on_dark(e):
-                                dark.enable() if e.value else dark.disable()
+                            ui.label('Default Settings').classes('card-title')
+                            
+                            def on_dark_toggle(e):
+                                if e.value: dark.enable()
+                                else: dark.disable()
                                 state.dark_mode = e.value
-                                log_event(f"Dark: {e.value}")
-                            ui.switch('Dark Mode', value=state.dark_mode, on_change=on_dark)
-                            def on_eng(e):
-                                state.default_engine = e.value
-                                log_event(f"Engine: {e.value}")
-                            ui.select(get_engines(), value=state.default_engine, label='Engine', on_change=on_eng).classes('w-full mt-1')
-                            def on_mask(e):
-                                state.default_masking = e.value
-                                log_event(f"Mask: {e.value}")
-                            ui.switch('Masking', value=state.default_masking, on_change=on_mask)
-                            def on_rerank(e):
-                                state.default_reranking = e.value
-                                log_event(f"Rerank: {e.value}")
-                            ui.switch('Reranking', value=state.default_reranking, on_change=on_rerank)
-                            def on_q(e):
-                                state.quality_passes = int(e.value)
-                                log_event(f"Quality: {e.value}")
-                            ui.number(label='Quality', value=state.quality_passes, min=1, max=5, on_change=on_q).classes('w-full mt-1')
+                                log_event(f"Theme: {'dark' if e.value else 'light'}")
+                            ui.switch('Dark mode', value=state.dark_mode, on_change=on_dark_toggle)
+                            
+                            def on_engine(e): state.default_engine = e.value; log_event(f"Default engine: {e.value}")
+                            ui.select(get_engines(), value=state.default_engine, label='Default translation engine', on_change=on_engine).classes('w-full mt-2')
+                            
+                            def on_quality(e): state.quality_passes = int(e.value); log_event(f"Quality: {e.value}")
+                            ui.number(label='Default quality passes', value=state.quality_passes, min=1, max=5, on_change=on_quality).classes('w-full mt-2')
+                            
+                            def on_context(e): state.context_window = int(e.value); log_event(f"Context: {e.value}")
+                            ui.number(label='Context window size', value=state.context_window, min=1, max=20, on_change=on_context).classes('w-full mt-2')
+                        
                         with ui.element('div').classes('card'):
-                            ui.label('ℹ️ About').classes('font-bold mb-2')
-                            ui.markdown('**SciTrans-LLMs** v1.0\n\nScientific document translation with PDF layout preservation.').classes('text-sm opacity-80')
+                            ui.label('Processing Defaults').classes('card-title')
+                            
+                            def on_mask(e): state.default_masking = e.value
+                            ui.switch('Enable formula/URL masking', value=state.default_masking, on_change=on_mask)
+                            
+                            def on_rerank(e): state.default_reranking = e.value
+                            ui.switch('Enable reranking', value=state.default_reranking, on_change=on_rerank)
+                            
+                            def on_tables(e): state.translate_tables = e.value
+                            ui.switch('Translate table content', value=state.translate_tables, on_change=on_tables)
+                            
+                            def on_figures(e): state.translate_figures = e.value
+                            ui.switch('Translate figure captions', value=state.translate_figures, on_change=on_figures)
+                        
+                        with ui.element('div').classes('card'):
+                            ui.label('About').classes('card-title')
+                            ui.markdown('''
+**SciTrans-LLMs** v1.0
+
+Scientific document translation system with:
+- Layout-preserving PDF translation
+- Terminology management via glossaries
+- Multiple translation backends
+- Evaluation metrics (BLEU, glossary adherence)
+                            ''').classes('text-sm opacity-80')
     
     log_event("GUI ready")
     print(f"\n{'='*60}\nSciTrans-LLMs GUI - http://127.0.0.1:{port}\n{'='*60}")
-    ui.run(port=port, title='SciTrans-LLMs', favicon='🔬', show=True, reload=False, storage_secret='scitrans_2024', reconnect_timeout=30)
+    
+    ui.run(
+        port=port,
+        title='SciTrans-LLMs',
+        favicon='🔬',
+        show=True,
+        reload=False,
+        storage_secret='scitrans_stable_session_2024',
+        reconnect_timeout=60,  # 60 second reconnect window
+    )
 
 if __name__ == "__main__":
     launch()

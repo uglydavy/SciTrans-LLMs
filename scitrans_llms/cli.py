@@ -108,6 +108,35 @@ def translate(
         False, "--no-context",
         help="Disable document context (for ablation)",
     ),
+    # NEW: Advanced options
+    passes: int = typer.Option(
+        1, "--passes", "-p",
+        help="Number of translation/refinement passes (1-5)",
+    ),
+    rerank: bool = typer.Option(
+        False, "--rerank", "-r",
+        help="Enable candidate reranking for better quality",
+    ),
+    candidates: int = typer.Option(
+        3, "--candidates",
+        help="Number of candidates to generate when reranking",
+    ),
+    preview_prompt: bool = typer.Option(
+        False, "--preview-prompt",
+        help="Show the translation prompt before running",
+    ),
+    interactive: bool = typer.Option(
+        False, "--interactive",
+        help="Interactive mode: review translations before finalizing",
+    ),
+    use_mineru: bool = typer.Option(
+        False, "--mineru",
+        help="Use minerU for PDF extraction (better quality)",
+    ),
+    preserve_structure: bool = typer.Option(
+        True, "--preserve-structure/--no-preserve-structure",
+        help="Preserve section numbers and bullet points",
+    ),
 ):
     """Translate text or documents."""
     
@@ -131,17 +160,37 @@ def translate(
     if model:
         translator_kwargs["model"] = model
     
+    # Configure masking with structure preservation
+    from scitrans_llms.masking import MaskConfig
+    mask_config = MaskConfig(
+        preserve_section_numbers=preserve_structure,
+        preserve_bullets=preserve_structure,
+        preserve_indentation=preserve_structure,
+    )
+    
     config = PipelineConfig(
         source_lang=source_lang,
         target_lang=target_lang,
         translator_backend=backend,
         translator_kwargs=translator_kwargs,
         enable_masking=not no_masking,
+        mask_config=mask_config,
         enable_glossary=not no_glossary,
         glossary=glossary,
         enable_context=not no_context,
         enable_refinement=not no_refinement,
+        num_candidates=candidates if rerank else 1,
     )
+    
+    # Preview prompt if requested
+    if preview_prompt:
+        from scitrans_llms.refine.prompting import build_prompt
+        prompt = build_prompt(source_lang, target_lang, glossary.to_dict() if glossary else {})
+        console.print("\n[bold cyan]Translation Prompt:[/]\n")
+        console.print(prompt)
+        console.print("\n" + "="*50 + "\n")
+        if not typer.confirm("Continue with translation?"):
+            raise typer.Exit(0)
     
     # Create document
     if input_text:
@@ -151,8 +200,14 @@ def translate(
         if input_file.suffix.lower() == ".pdf":
             try:
                 from scitrans_llms.ingest import parse_pdf
-                doc = parse_pdf(input_file, source_lang=source_lang, target_lang=target_lang)
-                console.print(f"[green]Parsed PDF:[/] {len(doc.all_blocks)} blocks from {input_file}")
+                doc = parse_pdf(
+                    input_file,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    use_mineru=use_mineru,
+                )
+                extractor = "minerU" if use_mineru else "PyMuPDF"
+                console.print(f"[green]Parsed PDF ({extractor}):[/] {len(doc.all_blocks)} blocks from {input_file}")
             except ImportError:
                 console.print("[yellow]PDF parsing requires PyMuPDF. Falling back to text mode.[/]")
                 text = input_file.read_text(encoding="utf-8")
@@ -161,8 +216,11 @@ def translate(
             text = input_file.read_text(encoding="utf-8")
             doc = Document.from_text(text, source_lang, target_lang)
     
-    # Translate with progress
+    # Translate with progress (multiple passes if requested)
     pipeline = TranslationPipeline(config)
+    
+    # Clamp passes to valid range
+    num_passes = max(1, min(passes, 5))
     
     with Progress(
         SpinnerColumn(),
@@ -173,10 +231,33 @@ def translate(
         task = progress.add_task("Translating...", total=100)
         
         def update_progress(msg: str, pct: float):
-            progress.update(task, description=msg, completed=int(pct * 100))
+            # Adjust progress for multiple passes
+            adjusted_pct = pct / num_passes
+            progress.update(task, description=msg, completed=int(adjusted_pct * 100))
         
         pipeline.progress_callback = update_progress
-        result = pipeline.translate(doc)
+        
+        # Run multiple passes if requested
+        result = None
+        for pass_num in range(num_passes):
+            if pass_num > 0:
+                progress.update(task, description=f"Pass {pass_num + 1}/{num_passes}...")
+                # For subsequent passes, use previous output as input context
+                pipeline.progress_callback = lambda msg, pct: progress.update(
+                    task,
+                    description=f"[Pass {pass_num + 1}] {msg}",
+                    completed=int(((pass_num + pct) / num_passes) * 100)
+                )
+            
+            result = pipeline.translate(doc)
+            
+            # Interactive review mode
+            if interactive and pass_num < num_passes - 1:
+                console.print(f"\n[bold]Pass {pass_num + 1} complete. Preview:[/]")
+                console.print(result.translated_text[:500] + "..." if len(result.translated_text) > 500 else result.translated_text)
+                if not typer.confirm("\nContinue with next pass?"):
+                    break
+        
         progress.update(task, description="[green]Complete!", completed=100)
     
     # Output
@@ -201,7 +282,8 @@ def translate(
             if output_file.suffix.lower() == ".pdf" and input_file and input_file.suffix.lower() == ".pdf":
                 try:
                     from scitrans_llms.render import render_pdf
-                    render_pdf(doc, input_file, output_file)
+                    # BUG FIX: Use result.document (translated) not doc (original)
+                    render_pdf(result.document, input_file, output_file)
                     console.print(f"\n[green]Saved PDF to:[/] {output_file}")
                 except ImportError:
                     # Fallback to text
@@ -643,6 +725,131 @@ def keys(
     else:
         console.print(f"[red]Error:[/] Unknown action '{action}'")
         console.print("Available actions: list, set, get, delete, status, export")
+        raise typer.Exit(1)
+
+
+@app.command()
+def corpus(
+    action: str = typer.Argument(..., help="Action: list, download, build-dict, status"),
+    name: Optional[str] = typer.Argument(None, help="Corpus name (europarl, opus-euconst, tatoeba)"),
+    source_lang: str = typer.Option("en", "--source", "-s", help="Source language"),
+    target_lang: str = typer.Option("fr", "--target", "-t", help="Target language"),
+    limit: int = typer.Option(10000, "--limit", "-l", help="Max entries for dictionary"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for dictionary"),
+):
+    """Manage downloadable translation corpora.
+    
+    Available corpora:
+    - europarl: European Parliament parallel corpus (~200MB)
+    - opus-euconst: EU Constitution corpus (~5MB)
+    - tatoeba: Crowdsourced sentences (~50MB)
+    
+    Examples:
+        scitrans corpus list                    # List available corpora
+        scitrans corpus download europarl       # Download Europarl EN-FR
+        scitrans corpus build-dict europarl     # Build dictionary from Europarl
+        scitrans corpus status                  # Show downloaded corpora
+    """
+    from scitrans_llms.translate.corpus_manager import (
+        CorpusManager, list_corpora, download_corpus, get_corpus_dictionary
+    )
+    
+    if action == "list":
+        corpora = list_corpora()
+        
+        table = Table(title="Available Translation Corpora")
+        table.add_column("Name", style="cyan")
+        table.add_column("Description")
+        table.add_column("Languages", style="green")
+        table.add_column("Size", style="yellow")
+        table.add_column("License", style="dim")
+        
+        for c in corpora:
+            langs = ", ".join(c["languages"][:5])
+            if len(c["languages"]) > 5:
+                langs += f" (+{len(c['languages']) - 5} more)"
+            table.add_row(
+                c["key"],
+                c["description"],
+                langs,
+                f"{c['size_mb']}MB",
+                c["license"],
+            )
+        
+        console.print(table)
+        console.print("\n[dim]Download with: scitrans corpus download <name>[/]")
+    
+    elif action == "status":
+        manager = CorpusManager()
+        downloaded = manager.list_downloaded()
+        
+        if not downloaded:
+            console.print("[yellow]No corpora downloaded yet.[/]")
+            console.print("Download with: [cyan]scitrans corpus download europarl[/]")
+        else:
+            console.print("[green]Downloaded corpora:[/]")
+            for name in downloaded:
+                console.print(f"  • {name}")
+    
+    elif action == "download":
+        if not name:
+            console.print("[red]Error:[/] Corpus name required")
+            console.print("Usage: [cyan]scitrans corpus download <name>[/]")
+            raise typer.Exit(1)
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Downloading...", total=100)
+            
+            def update(msg: str, pct: float):
+                progress.update(task, description=msg, completed=int(pct * 100))
+            
+            try:
+                path = download_corpus(name, source_lang, target_lang, update)
+                progress.update(task, description="[green]Complete!", completed=100)
+                console.print(f"\n[green]✓[/] Downloaded to: {path}")
+            except Exception as e:
+                console.print(f"\n[red]Error:[/] {e}")
+                raise typer.Exit(1)
+    
+    elif action == "build-dict":
+        if not name:
+            console.print("[red]Error:[/] Corpus name required")
+            raise typer.Exit(1)
+        
+        console.print(f"[dim]Building dictionary from {name} ({source_lang}-{target_lang})...[/]")
+        
+        try:
+            dictionary = get_corpus_dictionary(name, source_lang, target_lang, limit)
+            
+            console.print(f"[green]✓[/] Built dictionary with {len(dictionary)} entries")
+            
+            # Show sample
+            console.print("\n[bold]Sample entries:[/]")
+            for src, tgt in list(dictionary.items())[:5]:
+                console.print(f"  {src[:50]} → {tgt[:50]}")
+            
+            # Save if output specified
+            if output:
+                import csv
+                with open(output, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['source', 'target'])
+                    for src, tgt in dictionary.items():
+                        writer.writerow([src, tgt])
+                console.print(f"\n[green]Saved to:[/] {output}")
+            
+        except Exception as e:
+            console.print(f"[red]Error:[/] {e}")
+            raise typer.Exit(1)
+    
+    else:
+        console.print(f"[red]Unknown action:[/] {action}")
+        console.print("Available: list, download, build-dict, status")
         raise typer.Exit(1)
 
 

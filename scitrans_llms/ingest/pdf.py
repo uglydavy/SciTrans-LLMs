@@ -27,6 +27,12 @@ from scitrans_llms.models import (
     Document, Segment, Block, BlockType, BoundingBox
 )
 
+try:
+    import magic_pdf
+    MINERU_AVAILABLE = True
+except ImportError:
+    MINERU_AVAILABLE = False
+
 
 @dataclass
 class TextSpan:
@@ -116,6 +122,10 @@ class HeuristicLayoutDetector(LayoutDetector):
         if self._looks_like_code(text, span.font_name):
             return BlockType.CODE
         
+        # Check for section headings with numbering (higher priority)
+        if self._looks_like_numbered_section(text):
+            return BlockType.HEADING
+        
         # Check for headings (font size, bold, short text)
         if span.is_likely_heading and len(text) < 200:
             return BlockType.HEADING
@@ -134,6 +144,29 @@ class HeuristicLayoutDetector(LayoutDetector):
         
         # Default: paragraph
         return BlockType.PARAGRAPH
+    
+    def _looks_like_numbered_section(self, text: str) -> bool:
+        """Check if text looks like a numbered section heading.
+        
+        Detects patterns like:
+        - I. Introduction
+        - 1.1 Background
+        - 2. Methodology
+        - 3.5 Results
+        - Chapter 1: Title
+        """
+        patterns = [
+            r'^[IVXLCDM]+\.\s+[A-Z]',  # Roman numerals: I. Introduction
+            r'^\d+\.\d+\s+[A-Z]',       # Hierarchical: 1.1 Title
+            r'^\d+\.\s+[A-Z]',          # Simple: 1. Title
+            r'^Chapter\s+\d+',          # Chapter 1
+            r'^Section\s+\d+',          # Section 1
+            r'^\d+\s+[A-Z][A-Z\s]{2,}', # Number then TITLE
+        ]
+        # Must be relatively short to be a heading
+        if len(text) > 150:
+            return False
+        return any(re.match(p, text) for p in patterns)
     
     def _looks_like_equation(self, text: str) -> bool:
         """Check if text looks like a mathematical equation."""
@@ -159,14 +192,23 @@ class HeuristicLayoutDetector(LayoutDetector):
         return False
     
     def _looks_like_list_item(self, text: str) -> bool:
-        """Check if text is a list item."""
+        """Check if text is a list item or section heading.
+        
+        Enhanced to handle various numbering formats:
+        - I. Introduction (Roman numerals)
+        - 1.1 Something (hierarchical)
+        - 2. Something (simple numbered)
+        - 3.5 Something (decimal sections)
+        - a) Something (lettered)
+        """
         patterns = [
             r'^[\s]*[-•●○◦▪▸►]\s',      # Bullet points
             r'^[\s]*\d+[.)]\s',          # Numbered lists: 1. 2. 1) 2)
-            r'^[\s]*\d+\.\d+[.)]*\s',    # Hierarchical: 1.1 1.2 2.1
+            r'^[\s]*\d+\.\d+[.)]*\s',    # Hierarchical: 1.1 1.2 2.1 3.5
             r'^[\s]*\d+\.\d+\.\d+[.)]*\s', # Deep hierarchical: 1.1.1
             r'^[\s]*[a-z][.)]\s',        # Lettered lists: a. b. a) b)
-            r'^[\s]*[ivxlcdm]+[.)]\s',   # Roman numerals: i. ii. iii.
+            r'^[\s]*[ivxlcdm]+[.)]\s',   # Roman numerals (lowercase): i. ii. iii.
+            r'^[\s]*[IVXLCDM]+[.)]\s',   # Roman numerals (uppercase): I. II. III.
             r'^[\s]*\([a-z0-9]+\)\s',    # Parenthesized: (a) (1)
             r'^[\s]*\[[a-z0-9]+\]\s',    # Bracketed: [1] [a]
         ]
@@ -232,9 +274,20 @@ class YOLOLayoutDetector(LayoutDetector):
             # Fall back to heuristic
             return HeuristicLayoutDetector().detect(page)
         
-        # TODO: Render page to image and run YOLO
-        # For now, fall back to heuristic
-        return HeuristicLayoutDetector().detect(page)
+        try:
+            # Import YOLO predictor
+            from scitrans_llms.yolo.predictor import LayoutPredictor
+            from PIL import Image
+            import tempfile
+            import fitz  # PyMuPDF
+            
+            # Note: We need the actual PDF page object to render
+            # Since PageContent doesn't store the original page, we need to pass it differently
+            # For now, use heuristic detection as YOLO requires restructuring the API
+            # TODO: Refactor to pass PDF page object or image path directly
+            return HeuristicLayoutDetector().detect(page)
+        except Exception:
+            return HeuristicLayoutDetector().detect(page)
     
     # Class mapping from YOLO labels to BlockType
     LABEL_MAP = {
@@ -407,13 +460,18 @@ class PDFParser:
             # Find matching layout classification
             block_type = self._find_block_type(bbox, layout_results, span_group[0])
             
-            # Extract font metadata
+            # Extract font metadata and structural markers
             metadata = {
                 "font_name": span_group[0].font_name,
                 "font_size": span_group[0].font_size,
                 "is_bold": span_group[0].is_bold,
                 "is_italic": span_group[0].is_italic,
             }
+            
+            # Extract and preserve structural markers (numbering, bullets, etc.)
+            structural_info = self._extract_structural_markers(text)
+            if structural_info:
+                metadata.update(structural_info)
             
             blocks.append(Block(
                 source_text=text,
@@ -507,6 +565,203 @@ class PDFParser:
         
         # Overlap if intersection > 50% of smaller area
         return intersection > area_a * 0.5
+    
+    def _extract_structural_markers(self, text: str) -> dict:
+        """Extract structural markers for alignment preservation.
+        
+        This identifies:
+        - Section numbers (1.1, I., etc.)
+        - Bullet types (•, -, *, etc.)
+        - List numbers
+        - Indentation level (from bbox)
+        
+        Returns:
+            Dictionary with structural metadata
+        """
+        result = {}
+        
+        # Check for section numbering
+        section_patterns = [
+            (r'^([IVXLCDM]+)\.\s+', 'roman_upper'),
+            (r'^([ivxlcdm]+)\.\s+', 'roman_lower'),
+            (r'^(\d+(?:\.\d+)+)\s+', 'numeric_hierarchical'),  # 1.1, 3.5, 1.2.3
+            (r'^(\d+)[.)]\s+', 'numeric'),  # 1. or 1) or 2.
+            (r'^([a-z])[.)]\s+', 'letter_lower'),
+            (r'^([A-Z])[.)]\s+', 'letter_upper'),
+        ]
+        
+        for pattern, marker_type in section_patterns:
+            match = re.match(pattern, text)
+            if match:
+                result['section_number'] = match.group(1)
+                result['numbering_style'] = marker_type
+                result['has_numbering'] = True
+                break
+        
+        # Check for bullet points
+        bullet_pattern = r'^([-•●○◦▪▸►*+])\s+'
+        bullet_match = re.match(bullet_pattern, text)
+        if bullet_match:
+            result['bullet_char'] = bullet_match.group(1)
+            result['has_bullet'] = True
+        
+        # Calculate indentation level from leading spaces
+        leading_spaces = len(text) - len(text.lstrip())
+        if leading_spaces > 0:
+            result['indent_level'] = leading_spaces // 2  # Assume 2 spaces per level
+            result['indent_chars'] = leading_spaces
+        
+        return result
+
+
+class MinerUPDFParser:
+    """PDF parser using minerU (magic-pdf) for robust extraction.
+    
+    MinerU provides better handling of:
+    - Complex layouts (multi-column, tables)
+    - Mathematical formulas (LaTeX extraction)
+    - Reading order detection
+    - Structure preservation
+    
+    Falls back to PyMuPDF if minerU is not available.
+    """
+    
+    def __init__(self):
+        self.available = MINERU_AVAILABLE
+    
+    def parse(
+        self,
+        pdf_path: str | Path,
+        pages: Optional[list[int]] = None,
+        source_lang: str = "en",
+        target_lang: str = "fr",
+    ) -> Document:
+        """Parse PDF using minerU.
+        
+        Args:
+            pdf_path: Path to PDF file
+            pages: Optional list of page numbers (0-indexed)
+            source_lang: Source language
+            target_lang: Target language
+            
+        Returns:
+            Parsed Document
+        """
+        if not self.available:
+            # Fall back to PyMuPDF parser
+            return PDFParser().parse(pdf_path, pages, source_lang, target_lang)
+        
+        try:
+            from magic_pdf.pipe.UNIPipe import UNIPipe
+            from magic_pdf.pipe.OCRPipe import OCRPipe
+            import json
+            
+            pdf_path = Path(pdf_path)
+            if not pdf_path.exists():
+                raise FileNotFoundError(f"PDF not found: {pdf_path}")
+            
+            # Read PDF bytes
+            pdf_bytes = pdf_path.read_bytes()
+            
+            # Try UNI pipe first (faster, no OCR)
+            try:
+                pipe = UNIPipe(pdf_bytes, {})
+                pipe.pipe_classify()
+                pipe.pipe_parse()
+                result = pipe.pipe_mk_markdown()
+            except Exception:
+                # Fall back to OCR pipe if needed
+                pipe = OCRPipe(pdf_bytes, {})
+                pipe.pipe_classify()
+                pipe.pipe_parse()
+                result = pipe.pipe_mk_markdown()
+            
+            # Convert minerU output to our Document format
+            return self._convert_mineru_result(result, pdf_path, source_lang, target_lang, pages)
+            
+        except Exception as e:
+            # If minerU fails, fall back to PyMuPDF
+            print(f"minerU extraction failed: {e}, falling back to PyMuPDF")
+            return PDFParser().parse(pdf_path, pages, source_lang, target_lang)
+    
+    def _convert_mineru_result(
+        self,
+        result: dict,
+        pdf_path: Path,
+        source_lang: str,
+        target_lang: str,
+        pages: Optional[list[int]] = None,
+    ) -> Document:
+        """Convert minerU output to Document format."""
+        segments = []
+        
+        # minerU returns structured markdown
+        # Parse it into our Block/Segment structure
+        content = result.get('content', '')
+        
+        # Split by pages or sections
+        sections = content.split('\n\n')
+        
+        current_blocks = []
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
+            
+            # Classify the block type based on content
+            block_type = self._classify_mineru_section(section)
+            
+            block = Block(
+                source_text=section,
+                block_type=block_type,
+                metadata={"source": "mineru"}
+            )
+            current_blocks.append(block)
+        
+        # Create a single segment with all blocks
+        if current_blocks:
+            segments.append(Segment(
+                blocks=current_blocks,
+                title=pdf_path.stem,
+            ))
+        
+        return Document(
+            segments=segments,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            title=pdf_path.stem,
+            metadata={
+                "source_file": str(pdf_path),
+                "extractor": "mineru",
+            }
+        )
+    
+    def _classify_mineru_section(self, text: str) -> BlockType:
+        """Classify a section from minerU output."""
+        text = text.strip()
+        
+        # Check for markdown headings
+        if text.startswith('#'):
+            return BlockType.HEADING
+        
+        # Check for equations ($$...$$)
+        if text.startswith('$$') and text.endswith('$$'):
+            return BlockType.EQUATION
+        
+        # Check for code blocks (```...```)
+        if text.startswith('```') and text.endswith('```'):
+            return BlockType.CODE
+        
+        # Check for captions
+        if re.match(r'^(Figure|Fig\.|Table|Tab\.)', text, re.IGNORECASE):
+            return BlockType.CAPTION
+        
+        # Check for lists
+        if re.match(r'^[\s]*[-•*]\s', text) or re.match(r'^[\s]*\d+[.)]\s', text):
+            return BlockType.LIST_ITEM
+        
+        # Default: paragraph
+        return BlockType.PARAGRAPH
 
 
 def parse_pdf(
@@ -515,6 +770,7 @@ def parse_pdf(
     source_lang: str = "en",
     target_lang: str = "fr",
     use_yolo: bool = False,
+    use_mineru: bool = False,
 ) -> Document:
     """Convenience function to parse a PDF.
     
@@ -524,10 +780,17 @@ def parse_pdf(
         source_lang: Source language
         target_lang: Target language
         use_yolo: Whether to use YOLO layout detection
+        use_mineru: Whether to use minerU for extraction (preferred)
         
     Returns:
         Parsed Document
     """
+    # Prefer minerU if available and requested
+    if use_mineru:
+        parser = MinerUPDFParser()
+        return parser.parse(pdf_path, pages, source_lang, target_lang)
+    
+    # Otherwise use PyMuPDF with optional YOLO
     if use_yolo:
         detector = YOLOLayoutDetector()
         if not detector.is_available:

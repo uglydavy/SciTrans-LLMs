@@ -24,6 +24,7 @@ nicegui>=1.4.0
 
 # Document parsing
 python-docx>=1.1.0
+magic-pdf>=0.6.0  # minerU for robust PDF extraction
 
 # Optional translators (install on demand)
 openai>=1.13.0

@@ -109,6 +109,17 @@ NUMBER_UNIT_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Section numbering patterns (to preserve in translation)
+# This regex captures indentation, the number/letter, and the delimiter
+# Patterns: I., ii., 1., 1), 1.1, 1.2.3, a., B)
+# Order matters: hierarchical numbers first, then simple numbers
+SECTION_NUMBER_PATTERN = re.compile(
+    r'^(\s*)(\d+(?:\.\d+)+\s+|\d+[.)]\s+|[IVXLCDM]+\.\s+|[ivxlcdm]+\.\s+|[a-zA-Z][.)]\s+)'
+)
+
+# Bullet point patterns (to preserve)
+BULLET_PATTERN = re.compile(r'^(\s*)([-•●○◦▪▸►*+])\s+')
+
 
 # ============================================================================
 # Masking Functions
@@ -126,6 +137,11 @@ class MaskConfig:
     mask_emails: bool = True
     mask_dois: bool = True
     mask_numbers_units: bool = False  # Often want these translated contextually
+    
+    # Structure preservation
+    preserve_section_numbers: bool = True  # Preserve section/list numbering
+    preserve_bullets: bool = True  # Preserve bullet characters
+    preserve_indentation: bool = True  # Try to maintain indentation
 
     # Convenience aliases for GUI
     mask_equations: bool = True  # Alias covering all LaTeX math
@@ -163,6 +179,13 @@ def mask_text(
     result = text
     
     # Order matters: mask larger patterns first to avoid nested issues
+    
+    # FIRST: Preserve structural markers (section numbers, bullets)
+    if config.preserve_section_numbers:
+        result = _apply_pattern(result, SECTION_NUMBER_PATTERN, registry, "SECNUM")
+    
+    if config.preserve_bullets:
+        result = _apply_pattern(result, BULLET_PATTERN, registry, "BULLET")
     
     # LaTeX environments (largest structures)
     if config.mask_latex_env:
@@ -241,7 +264,11 @@ def mask_block(
     
     For protected blocks (equations, code), the entire content is masked.
     For translatable blocks, specific patterns within the text are masked.
+    Structural markers are preserved for alignment.
     """
+    if config is None:
+        config = MaskConfig()
+    
     if block.is_protected:
         # Entire block is protected - mask it completely
         prefix = {
@@ -253,13 +280,34 @@ def mask_block(
         block.masked_text = placeholder
     else:
         # Apply pattern-based masking within the text
-        block.masked_text = mask_text(block.source_text, registry, config)
+        masked = mask_text(block.source_text, registry, config)
+        
+        # Store original indentation in metadata for reconstruction
+        if config.preserve_indentation and block.source_text:
+            leading_spaces = len(block.source_text) - len(block.source_text.lstrip())
+            if leading_spaces > 0:
+                block.metadata['leading_spaces'] = leading_spaces
+                block.metadata['indent_chars'] = block.source_text[:leading_spaces]
+        
+        block.masked_text = masked
 
 
 def unmask_block(block: Block, registry: MaskRegistry) -> None:
-    """Restore placeholders in a block's translated text (mutates block)."""
+    """Restore placeholders in a block's translated text (mutates block).
+    
+    Also restores indentation/alignment if preserved in metadata.
+    """
     if block.translated_text:
-        block.translated_text = unmask_text(block.translated_text, registry)
+        unmasked = unmask_text(block.translated_text, registry)
+        
+        # Restore indentation if it was preserved
+        if 'indent_chars' in block.metadata:
+            # Check if indentation was lost during translation
+            if not unmasked.startswith((' ', '\t')):
+                # Restore original indentation
+                unmasked = block.metadata['indent_chars'] + unmasked
+        
+        block.translated_text = unmasked
 
 
 def mask_document(
