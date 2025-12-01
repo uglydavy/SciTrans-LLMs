@@ -153,14 +153,14 @@ body.body--light .preview-area { background:#e8e8e8; }
                             upload_status = ui.label('No file selected').classes('text-xs opacity-70 mb-2')
                             
                             # Upload handler function
-                                async def handle_upload(e):
-                                    try:
-                                    # Handle NiceGUI upload event - try multiple approaches
+                            async def handle_upload(e):
+                                try:
+                                    # Handle NiceGUI upload event
                                     content = None
                                     fname = 'document.pdf'
                                     
                                     # Method 1: e.content (most common)
-                                            if hasattr(e, 'content'):
+                                    if hasattr(e, 'content'):
                                         if hasattr(e.content, 'read'):
                                             content = await e.content.read()
                                         else:
@@ -181,7 +181,7 @@ body.body--light .preview-area { background:#e8e8e8; }
                                         try:
                                             if hasattr(e, 'read'):
                                                 content = await e.read()
-                                        else:
+                                            else:
                                                 content = e
                                         except:
                                             pass
@@ -203,38 +203,32 @@ body.body--light .preview-area { background:#e8e8e8; }
                                     if content[:4] != b'%PDF':
                                         ui.notify('Invalid PDF file', type='warning')
                                         return
-                                        
-                                        tmp = Path(tempfile.mkdtemp()) / fname
-                                            tmp.write_bytes(content)
+                                    
+                                    tmp = Path(tempfile.mkdtemp()) / fname
+                                    tmp.write_bytes(content)
                                     
                                     # Verify file was written correctly
                                     if not tmp.exists() or tmp.stat().st_size == 0:
                                         ui.notify('Failed to save file', type='warning')
                                         return
-                                        
-                                        state.uploaded_pdf_path = str(tmp)
-                                        state.uploaded_pdf_name = fname
+                                    
+                                    state.uploaded_pdf_path = str(tmp)
+                                    state.uploaded_pdf_name = fname
                                     upload_status.text = f'✓ Loaded: {fname}'
                                     
                                     # Reset translated preview
                                     state.translated_pdf_path = None
-                                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
+                                    translated_preview_html.set_content('<div style="padding:20px;text-align:center;color:#888;">No translation yet</div>')
                                     
                                     # Update source preview
                                     preview_html.set_content(get_preview(str(tmp), 0))
                                     current_page_num.value = 0
                                     update_page_count()
                                     
-                                        log_event(f"Uploaded: {fname}")
-                                        ui.notify(f'File loaded: {fname}', type='positive')
-                                    
-                                    # Update system logs in real-time
-                                    try:
-                                        dev_logs.value = '\n'.join(system_logs[-50:])
-                                    except:
-                                        pass
-                                    except Exception as ex:
-                                        log_event(f"Upload error: {ex}", "ERROR")
+                                    log_event(f"Uploaded: {fname}")
+                                    ui.notify(f'File loaded: {fname}', type='positive')
+                                except Exception as ex:
+                                    log_event(f"Upload error: {ex}", "ERROR")
                                     import traceback
                                     log_event(traceback.format_exc(), "ERROR")
                                     ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
@@ -261,49 +255,43 @@ body.body--light .preview-area { background:#e8e8e8; }
                                 with ui.tab_panel(url_tab).classes('p-0'):
                                     with ui.row().classes('w-full gap-2 items-center'):
                                         url_input = ui.input(placeholder='https://arxiv.org/pdf/...').classes('flex-grow').props('dense')
-                                
-                                async def fetch_url():
-                                    url = url_input.value.strip()
-                                    if not url:
-                                        ui.notify('Enter a URL', type='warning')
-                                        return
-                                    upload_status.text = 'Fetching...'
-                                    try:
-                                        import urllib.request
-                                        log_event(f"Fetching: {url}")
-                                        tmp = Path(tempfile.mkdtemp())
-                                        fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
-                                        if not fname.endswith('.pdf'): fname += '.pdf'
-                                        fpath = tmp / fname
                                         
-                                        loop = asyncio.get_event_loop()
-                                        await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
-                                        
-                                        state.uploaded_pdf_path = str(fpath)
-                                        state.uploaded_pdf_name = fname
+                                        async def fetch_url():
+                                            url = url_input.value.strip()
+                                            if not url:
+                                                ui.notify('Enter a URL', type='warning')
+                                                return
+                                            upload_status.text = 'Fetching...'
+                                            try:
+                                                import urllib.request
+                                                log_event(f"Fetching: {url}")
+                                                tmp = Path(tempfile.mkdtemp())
+                                                fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
+                                                if not fname.endswith('.pdf'): fname += '.pdf'
+                                                fpath = tmp / fname
+                                                
+                                                loop = asyncio.get_event_loop()
+                                                await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
+                                                
+                                                state.uploaded_pdf_path = str(fpath)
+                                                state.uploaded_pdf_name = fname
                                                 upload_status.text = f'✓ Loaded: {fname}'
                                                 
                                                 # Reset translated preview
                                                 state.translated_pdf_path = None
-                                                translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
+                                                translated_preview_html.set_content('<div style="padding:20px;text-align:center;color:#888;">No translation yet</div>')
                                                 
                                                 preview_html.set_content(get_preview(str(fpath), 0))
                                                 current_page_num.value = 0
                                                 update_page_count()
                                                 
-                                        log_event(f"Downloaded: {fname}")
-                                        ui.notify('PDF downloaded', type='positive')
-                                                
-                                                # Update system logs in real-time
-                                                try:
-                                                    dev_logs.value = '\n'.join(system_logs[-50:])
-                                                except:
-                                                    pass
-                                    except Exception as ex:
-                                        upload_status.text = 'Download failed'
-                                        log_event(f"URL error: {ex}", "ERROR")
-                                        ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
-                                
+                                                log_event(f"Downloaded: {fname}")
+                                                ui.notify('PDF downloaded', type='positive')
+                                            except Exception as ex:
+                                                upload_status.text = 'Download failed'
+                                                log_event(f"URL error: {ex}", "ERROR")
+                                                ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
+                                        
                                         ui.button('Fetch', on_click=fetch_url, icon='download').props('dense size=sm')
                         
                         # Translation Settings
@@ -491,37 +479,26 @@ body.body--light .preview-area { background:#e8e8e8; }
                     if not state.uploaded_pdf_path:
                         ui.notify('Upload a document first', type='warning')
                         return
+                    
                     try:
-                    translate_btn.disable()
-                    download_btn.props('disabled')
+                        translate_btn.disable()
+                        download_btn.props('disabled')
                         retranslate_btn.props('disabled')
                         tweak_btn.props('disabled')
-                    prog_bar.value = 0
-                        translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>')
-                    except RuntimeError as e:
-                        # Client disconnected, can't update UI
-                        if 'client' not in str(e).lower():
-                            raise
-                        return
-                    except Exception:
+                        prog_bar.value = 0
+                        translated_preview_html.set_content('<div style="padding:20px;text-align:center;color:#888;">Translating...</div>')
+                    except:
                         pass
                     
                     logs = []
-                    
-                    # Reset translated preview
                     state.translated_pdf_path = None
                     
                     def log(m):
                         try:
-                        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
-                        log_area.value = '\n'.join(logs[-6:])
-                        log_event(m)
-                        except RuntimeError as e:
-                            # Client disconnected, ignore UI updates
-                            if 'client' not in str(e).lower():
-                                raise
-                        except Exception:
-                            # Ignore other UI update errors during translation
+                            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
+                            log_area.value = '\n'.join(logs[-6:])
+                            log_event(m)
+                        except:
                             pass
                     
                     try:
@@ -541,41 +518,22 @@ body.body--light .preview-area { background:#e8e8e8; }
                         
                         def cb(m):
                             try:
-                            log(m)
-                                log_event(m)  # Also log to system logs for real-time updates
+                                log(m)
+                                log_event(m)
                                 if 'pars' in m.lower(): 
-                                    try:
-                                        prog_bar.value = 0.2
-                                    except:
-                                        pass
+                                    prog_bar.value = 0.2
                                 elif 'translat' in m.lower(): 
-                                    try:
-                                        prog_bar.value = 0.5
-                                    except:
-                                        pass
+                                    prog_bar.value = 0.5
                                 elif 'render' in m.lower(): 
-                                    try:
-                                        prog_bar.value = 0.85
-                                    except:
-                                        pass
-                            except RuntimeError as e:
-                                # Client disconnected, ignore UI updates
-                                if 'client' not in str(e).lower():
-                                    raise
-                            except Exception:
-                                # Ignore UI update errors
+                                    prog_bar.value = 0.85
+                            except:
                                 pass
                         
                         await asyncio.sleep(0.1)
                         try:
-                        prog_bar.value = 0.25
-                        prog_text.text = "Translating..."
-                        except RuntimeError as e:
-                            # Client disconnected
-                            if 'client' not in str(e).lower():
-                                raise
-                            return
-                        except Exception:
+                            prog_bar.value = 0.25
+                            prog_text.text = "Translating..."
+                        except:
                             pass
                         
                         # Run translation with reranking enabled
@@ -587,61 +545,50 @@ body.body--light .preview-area { background:#e8e8e8; }
                             direction=current_direction['value'],
                             pages=pages_val,
                             quality_loops=int(quality.value),
-                            enable_rerank=True,  # Reranking mandatory
-                            use_mineru=True,  # MinerU mandatory
+                            enable_rerank=True,
+                            use_mineru=True,
                             progress=cb
                         ))
                         
                         try:
-                        prog_bar.value = 1.0
+                            prog_bar.value = 1.0
                         except:
                             pass
                         
                         if result.success:
                             try:
-                            log("Translation complete")
-                            prog_text.text = "Complete"
-                            if out.exists():
-                                state.translated_pdf_path = str(out)
-                                download_btn.props(remove='disabled')
+                                log("Translation complete")
+                                prog_text.text = "Complete"
+                                if out.exists():
+                                    state.translated_pdf_path = str(out)
+                                    download_btn.props(remove='disabled')
                                     retranslate_btn.props(remove='disabled')
                                     tweak_btn.props(remove='disabled')
                                     translated_preview_html.set_content(get_preview(str(out), 0))
                                     translated_page_num.value = 0
                                     update_translated_page_count()
-                            ui.notify('Translation complete', type='positive')
-                            except RuntimeError as e:
-                                # Client disconnected, just log the result
-                                if 'client' not in str(e).lower():
-                                    raise
-                                log_event("Translation complete (client disconnected)", "INFO")
-                            except Exception as ex:
-                                log_event(f"UI update error after translation: {ex}", "ERROR")
+                                ui.notify('Translation complete', type='positive')
+                            except:
+                                log_event("Translation complete", "INFO")
                         else:
                             try:
-                            log(f"Errors: {result.errors[:2]}")
-                            prog_text.text = "Completed with errors"
+                                log(f"Errors: {result.errors[:2]}")
+                                prog_text.text = "Completed with errors"
                             except:
                                 pass
                     except Exception as ex:
                         try:
-                        log(f"Error: {ex}")
-                        prog_text.text = "Error"
-                        log_event(f"Translation error: {ex}", "ERROR")
+                            log(f"Error: {ex}")
+                            prog_text.text = "Error"
+                            log_event(f"Translation error: {ex}", "ERROR")
                             import traceback
                             log_event(traceback.format_exc(), "ERROR")
                             ui.notify(f'Translation failed: {str(ex)[:80]}', type='negative')
-                        except RuntimeError as e:
-                            # Client disconnected during error handling
-                            if 'client' not in str(e).lower():
-                                raise
-                            log_event(f"Translation error (client disconnected): {ex}", "ERROR")
-                        except Exception:
-                            # Ignore UI update errors
-                            pass
+                        except:
+                            log_event(f"Translation error: {ex}", "ERROR")
                     finally:
                         try:
-                        translate_btn.enable()
+                            translate_btn.enable()
                         except:
                             pass
                 

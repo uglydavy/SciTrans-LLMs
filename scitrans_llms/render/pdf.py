@@ -183,19 +183,10 @@ class PDFRenderer:
         # Check if we have proper bbox info
         has_bbox = any(block.bbox for block in document.all_blocks)
         
-        if has_bbox:
-            # Process each page with bbox-based replacement
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                blocks = blocks_by_page.get(page_num, [])
-                
-                if self.config.mode == "replace":
-                    self._render_replace_mode(page, blocks)
-                else:
-                    self._render_overlay_mode(page, blocks)
-        else:
-            # Fallback: Use text search and replace
-            self._render_by_text_search(doc, document)
+        # Always use text search-based replacement for reliability
+        # This finds source text in PDF and replaces with translated text
+        # More reliable than bbox-based replacement which can miss text
+        self._render_by_text_search_all(doc, document)
         
         # Save output
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -216,6 +207,89 @@ class PDFRenderer:
                 blocks_by_page[page].append(block)
         
         return blocks_by_page
+    
+    def _render_by_text_search_all(self, doc, document: Document):
+        """Replace ALL source text with translations using text search.
+        
+        This method searches for source text in the PDF and replaces it.
+        It handles blocks that may contain merged text by searching for
+        sentence-level chunks.
+        """
+        import fitz
+        import re
+        
+        # Build a mapping of source -> translated for all blocks
+        translations = {}
+        for block in document.all_blocks:
+            if not block.is_translatable or not block.translated_text:
+                continue
+            if block.translated_text.strip() == block.source_text.strip():
+                continue
+            
+            source = block.source_text.strip()
+            if len(source) >= 3:
+                translations[source] = block.translated_text
+        
+        # Process each page
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            
+            # For each translation pair
+            for source, translated in translations.items():
+                # Try different search strategies
+                search_keys = []
+                
+                # 1. Try first 60 chars (for titles/headings)
+                if len(source) <= 60:
+                    search_keys.append(source)
+                else:
+                    search_keys.append(source[:60])
+                
+                # 2. Try first sentence or phrase
+                sentences = re.split(r'[.!?]\s+', source)
+                if sentences and len(sentences[0]) >= 10:
+                    search_keys.append(sentences[0][:50])
+                
+                # 3. For text starting with common patterns
+                words = source.split()[:8]
+                if len(words) >= 3:
+                    search_keys.append(' '.join(words))
+                
+                # Try each search key
+                for search_key in search_keys:
+                    if len(search_key) < 5:
+                        continue
+                    
+                    instances = page.search_for(search_key)
+                    
+                    for rect in instances:
+                        try:
+                            font_size = max(6, min(10, rect.height * 0.65))
+                            
+                            # Use proportional translated text
+                            trans_text = translated
+                            if len(translated) > 150:
+                                # Truncate long translations proportionally
+                                ratio = len(search_key) / len(source)
+                                trans_len = int(len(translated) * ratio * 1.2)
+                                trans_text = translated[:trans_len]
+                            
+                            page.add_redact_annot(
+                                rect,
+                                text=trans_text[:200],
+                                fontname="helv",
+                                fontsize=font_size,
+                                fill=(1, 1, 1),
+                                text_color=(0, 0, 0),
+                            )
+                        except Exception:
+                            continue
+            
+            # Apply all redactions for this page
+            try:
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+            except Exception:
+                pass
     
     def _render_by_text_search(self, doc, document: Document):
         """Render by finding source text in PDF and replacing it.
@@ -298,7 +372,7 @@ class PDFRenderer:
         return replaced_count
     
     def _render_overlay_mode(self, page, blocks: list[Block]):
-        """Render translations as overlay on original text."""
+        """Render translations as overlay using redaction for proper text replacement."""
         import fitz
         
         for block in blocks:
@@ -308,81 +382,109 @@ class PDFRenderer:
             if not block.is_translatable:
                 continue
             
-            bbox = block.bbox
-            rect = fitz.Rect(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
-            
-            # Get font info
-            font_name = block.metadata.get("font_name", "Helvetica")
-            font_size = block.metadata.get("font_size", 11)
-            
-            # Map font
-            mapped_font = self.font_mapper.map_font(font_name)
-            
-            # Adjust size if needed
-            if self.config.adjust_font_size:
-                font_size = self.font_mapper.adjust_size_for_language(
-                    font_size, "en", "fr"
-                )
-            
-            # First, white out the original text area
-            page.draw_rect(rect, color=None, fill=(1, 1, 1))
-            
-            # Insert translated text
-            text = block.translated_text
-            
-            # Use text writer for better control
-            try:
-                # Fit text to rectangle
-                rc = page.insert_textbox(
-                    rect,
-                    text,
-                    fontsize=font_size,
-                    fontname=mapped_font,
-                    color=self.config.text_color,
-                    align=fitz.TEXT_ALIGN_LEFT,
-                )
-                
-                # If text didn't fit, try smaller font
-                if rc < 0:
-                    smaller_size = font_size * 0.85
-                    page.draw_rect(rect, color=None, fill=(1, 1, 1))
-                    page.insert_textbox(
-                        rect,
-                        text,
-                        fontsize=smaller_size,
-                        fontname=mapped_font,
-                        color=self.config.text_color,
-                        align=fitz.TEXT_ALIGN_LEFT,
-                    )
-            except Exception:
-                # Fallback: simple text insert
-                page.insert_text(
-                    (bbox.x0, bbox.y0 + font_size),
-                    text,
-                    fontsize=font_size,
-                    fontname="helv",
-                )
-    
-    def _render_replace_mode(self, page, blocks: list[Block]):
-        """Replace original text with translations."""
-        import fitz
-        
-        # First pass: white out all text areas
-        for block in blocks:
-            if not block.bbox or not block.is_translatable:
+            # Skip if translation is same as source
+            if block.translated_text.strip() == block.source_text.strip():
                 continue
             
             bbox = block.bbox
             rect = fitz.Rect(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
             
-            # Expand rect slightly to cover fully
-            rect = rect + fitz.Rect(-2, -2, 2, 2)
+            # Get font info
+            font_size = block.metadata.get("font_size", min(11, rect.height * 0.7))
             
-            # Draw white rectangle
-            page.draw_rect(rect, color=None, fill=(1, 1, 1))
+            text = block.translated_text
+            
+            try:
+                # Use redaction for clean text replacement
+                page.add_redact_annot(
+                    rect,
+                    text=text,
+                    fontname="helv",
+                    fontsize=font_size,
+                    fill=(1, 1, 1),
+                    text_color=(0, 0, 0),
+                )
+            except Exception:
+                # Fallback: draw white rect and insert text
+                page.draw_rect(rect, color=None, fill=(1, 1, 1))
+                try:
+                    page.insert_textbox(
+                        rect,
+                        text,
+                        fontsize=font_size,
+                        fontname="helv",
+                        color=(0, 0, 0),
+                    )
+                except:
+                    page.insert_text(
+                        (bbox.x0, bbox.y0 + font_size),
+                        text[:200],
+                        fontsize=font_size,
+                        fontname="helv",
+                    )
         
-        # Second pass: insert translations
-        self._render_overlay_mode(page, blocks)
+        # Apply all redactions
+        try:
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        except Exception:
+            pass
+    
+    def _render_replace_mode(self, page, blocks: list[Block]):
+        """Replace original text with translations using redaction.
+        
+        This properly removes original text from the PDF text layer
+        and inserts translated text in its place.
+        """
+        import fitz
+        
+        # Collect all areas to redact with their translations
+        for block in blocks:
+            if not block.bbox or not block.is_translatable:
+                continue
+            if not block.translated_text:
+                continue
+            # Skip if translation is same as source
+            if block.translated_text.strip() == block.source_text.strip():
+                continue
+            
+            bbox = block.bbox
+            rect = fitz.Rect(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
+            
+            # Expand rect slightly
+            rect = rect + fitz.Rect(-1, -1, 1, 1)
+            
+            # Get font size from metadata or estimate from rect height
+            font_size = block.metadata.get("font_size", min(11, rect.height * 0.7))
+            
+            try:
+                # Add redaction annotation - this marks text for removal
+                page.add_redact_annot(
+                    rect,
+                    text=block.translated_text,  # Replacement text
+                    fontname="helv",
+                    fontsize=font_size,
+                    fill=(1, 1, 1),  # White background
+                    text_color=(0, 0, 0),  # Black text
+                )
+            except Exception:
+                # If redaction fails, use overlay method
+                page.draw_rect(rect, color=None, fill=(1, 1, 1))
+                try:
+                    page.insert_textbox(
+                        rect,
+                        block.translated_text,
+                        fontsize=font_size,
+                        fontname="helv",
+                        color=(0, 0, 0),
+                    )
+                except:
+                    pass
+        
+        # Apply all redactions at once - this removes original text
+        try:
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        except Exception:
+            pass  # Some PDFs may not support redaction
 
 
 def render_pdf(
