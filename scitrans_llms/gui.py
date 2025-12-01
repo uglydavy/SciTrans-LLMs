@@ -149,70 +149,82 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             ui.label('Source Document').classes('card-title')
                             upload_status = ui.label('No file selected').classes('text-sm opacity-70 mb-2')
                             
-                            # Upload zone with proper drag & drop
-                            with ui.element('div').classes('upload-zone') as upload_zone:
-                                ui.label('📄 Drag & Drop PDF here').classes('text-sm font-medium mb-1')
-                                ui.label('or click to browse').classes('text-xs opacity-70')
-                                
-                                async def handle_upload(e):
-                                    try:
-                                        # Handle NiceGUI upload event
-                                        if hasattr(e, 'content'):
-                                            content = await e.content.read() if hasattr(e.content, 'read') else e.content
-                                            fname = getattr(e, 'name', 'document.pdf')
-                                        elif hasattr(e, 'files'):
-                                            files = e.files if isinstance(e.files, list) else [e.files]
-                                            if files:
-                                                f = files[0]
-                                                content = await f.read() if hasattr(f, 'read') else f
-                                                fname = getattr(f, 'name', 'document.pdf')
+                            # Upload handler function
+                            async def handle_upload(e):
+                                try:
+                                    # Handle NiceGUI upload event - try multiple approaches
+                                    content = None
+                                    fname = 'document.pdf'
+                                    
+                                    # Method 1: e.content (most common)
+                                    if hasattr(e, 'content'):
+                                        if hasattr(e.content, 'read'):
+                                            content = await e.content.read()
+                                        else:
+                                            content = e.content
+                                        fname = getattr(e, 'name', fname)
+                                    # Method 2: e.files
+                                    elif hasattr(e, 'files'):
+                                        files = e.files if isinstance(e.files, list) else [e.files]
+                                        if files and len(files) > 0:
+                                            f = files[0]
+                                            if hasattr(f, 'read'):
+                                                content = await f.read()
                                             else:
-                                                raise ValueError("No file in upload event")
-                                        else:
-                                            # Try reading from sender
-                                            content = await e.sender.read() if hasattr(e.sender, 'read') else e.sender
-                                            fname = getattr(e.sender, 'name', 'document.pdf')
-                                        
-                                        if not content or len(content) == 0:
-                                            ui.notify('Empty file received', type='warning')
+                                                content = f
+                                            fname = getattr(f, 'name', fname)
+                                    # Method 3: Direct read
+                                    else:
+                                        try:
+                                            if hasattr(e, 'read'):
+                                                content = await e.read()
+                                            else:
+                                                content = e
+                                        except:
+                                            pass
+                                    
+                                    if not content or (isinstance(content, bytes) and len(content) == 0):
+                                        ui.notify('Empty file received', type='warning')
+                                        return
+                                    
+                                    tmp = Path(tempfile.mkdtemp()) / fname
+                                    if isinstance(content, bytes):
+                                        tmp.write_bytes(content)
+                                    else:
+                                        # Try to write as text if not bytes
+                                        try:
+                                            tmp.write_text(str(content), encoding='utf-8')
+                                        except:
+                                            ui.notify('Invalid file format', type='warning')
                                             return
-                                        
-                                        tmp = Path(tempfile.mkdtemp()) / fname
-                                        if isinstance(content, bytes):
-                                            tmp.write_bytes(content)
-                                        else:
-                                            shutil.copy(content, tmp)
-                                        
-                                        state.uploaded_pdf_path = str(tmp)
-                                        state.uploaded_pdf_name = fname
-                                        upload_status.text = f'✓ Loaded: {fname}'
-                                        
-                                        # Reset translated preview
-                                        state.translated_pdf_path = None
-                                        translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
-                                        
-                                        # Update source preview
-                                        preview_html.set_content(get_preview(str(tmp), 0))
-                                        current_page_num.value = 0
-                                        update_page_count()
-                                        
-                                        log_event(f"Uploaded: {fname}")
-                                        ui.notify(f'File loaded: {fname}', type='positive')
-                                    except Exception as ex:
-                                        log_event(f"Upload error: {ex}", "ERROR")
-                                        import traceback
-                                        log_event(traceback.format_exc(), "ERROR")
-                                        ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
-                                
-                                # Proper upload component with drag & drop support
-                                upload_comp = ui.upload(
-                                    on_upload=handle_upload,
-                                    auto_upload=True,
-                                    max_files=1
-                                ).props('accept=".pdf" multiple=false')
-                                
-                                # Make entire zone clickable
-                                upload_zone.on('click', lambda: upload_comp.run_method('pickFiles'))
+                                    
+                                    state.uploaded_pdf_path = str(tmp)
+                                    state.uploaded_pdf_name = fname
+                                    upload_status.text = f'✓ Loaded: {fname}'
+                                    
+                                    # Reset translated preview
+                                    state.translated_pdf_path = None
+                                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
+                                    
+                                    # Update source preview
+                                    preview_html.set_content(get_preview(str(tmp), 0))
+                                    current_page_num.value = 0
+                                    update_page_count()
+                                    
+                                    log_event(f"Uploaded: {fname}")
+                                    ui.notify(f'File loaded: {fname}', type='positive')
+                                except Exception as ex:
+                                    log_event(f"Upload error: {ex}", "ERROR")
+                                    import traceback
+                                    log_event(traceback.format_exc(), "ERROR")
+                                    ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
+                            
+                            # Upload component with drag & drop - styled as zone
+                            upload_comp = ui.upload(
+                                on_upload=handle_upload,
+                                auto_upload=True,
+                                max_files=1
+                            ).props('accept=".pdf"').classes('w-full upload-zone')
                             
                             ui.label('Or enter URL:').classes('text-xs mt-3 opacity-70')
                             with ui.row().classes('w-full gap-2 items-center'):
@@ -368,7 +380,8 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                 update_page_count()
                                         
                                         ui.button(icon='chevron_left', on_click=prev_source).props('flat dense')
-                                        current_page_num = ui.number(value=0, min=0, format=lambda v: f'Page {int(v)+1}').props('dense readonly').style('width:100px;')
+                                        current_page_num = ui.number(value=0, min=0).props('dense readonly').style('width:80px; display:none;')
+                                        page_label_source = ui.label('Page 0 / 0').classes('text-sm')
                                         ui.button(icon='chevron_right', on_click=next_source).props('flat dense')
                                         
                                         def update_page_count():
@@ -378,9 +391,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                     doc = fitz.open(state.uploaded_pdf_path)
                                                     max_pages = len(doc)
                                                     doc.close()
-                                                    current_page_num.props(f'label="Page {int(current_page_num.value)+1} / {max_pages}"')
+                                                    page_label_source.text = f'Page {int(current_page_num.value)+1} / {max_pages}'
                                                 except:
-                                                    pass
+                                                    page_label_source.text = f'Page {int(current_page_num.value)+1}'
                                 
                                 # Translated preview
                                 with ui.tab_panel(translated_tab).classes('p-0').style('height:100%;'):
@@ -408,7 +421,8 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                 update_translated_page_count()
                                         
                                         ui.button(icon='chevron_left', on_click=prev_translated).props('flat dense')
-                                        translated_page_num = ui.number(value=0, min=0, format=lambda v: f'Page {int(v)+1}').props('dense readonly').style('width:100px;')
+                                        translated_page_num = ui.number(value=0, min=0).props('dense readonly').style('width:80px; display:none;')
+                                        page_label_translated = ui.label('Page 0 / 0').classes('text-sm')
                                         ui.button(icon='chevron_right', on_click=next_translated).props('flat dense')
                                         
                                         def update_translated_page_count():
@@ -418,9 +432,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                     doc = fitz.open(state.translated_pdf_path)
                                                     max_pages = len(doc)
                                                     doc.close()
-                                                    translated_page_num.props(f'label="Page {int(translated_page_num.value)+1} / {max_pages}"')
+                                                    page_label_translated.text = f'Page {int(translated_page_num.value)+1} / {max_pages}'
                                                 except:
-                                                    pass
+                                                    page_label_translated.text = f'Page {int(translated_page_num.value)+1}'
                         
                         # Progress
                         with ui.element('div').classes('card'):
