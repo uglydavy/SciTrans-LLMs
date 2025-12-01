@@ -221,52 +221,81 @@ class PDFRenderer:
         """Render by finding source text in PDF and replacing it.
         
         This is the fallback when blocks don't have bbox info.
+        Uses PyMuPDF redaction for cleaner text replacement.
         """
         import fitz
         
+        replaced_count = 0
         for block in document.all_blocks:
             if not block.is_translatable:
                 continue
             if not block.translated_text:
                 continue
-            if block.translated_text == block.source_text:
+            if block.translated_text.strip() == block.source_text.strip():
                 continue
             
             # Search for source text in all pages
             source_text = block.source_text.strip()
-            if len(source_text) < 5:
+            if len(source_text) < 3:
                 continue
             
-            # Try to find and replace
+            # Use first 80 chars for search (avoid matching issues with long text)
+            search_text = source_text[:80] if len(source_text) > 80 else source_text
+            
+            # Try to find and replace on each page
             for page_num in range(len(doc)):
                 page = doc[page_num]
                 
                 # Search for text instances
-                text_instances = page.search_for(source_text[:100])  # Limit search length
+                text_instances = page.search_for(search_text, quads=True)
                 
-                for inst in text_instances:
+                if not text_instances:
+                    continue
+                
+                for quad in text_instances:
                     try:
-                        # Expand rect slightly
-                        rect = inst + fitz.Rect(-2, -2, 2, 2)
+                        # Convert quad to rect
+                        rect = quad.rect if hasattr(quad, 'rect') else fitz.Rect(quad)
                         
-                        # White out
-                        page.draw_rect(rect, color=None, fill=(1, 1, 1))
+                        # Expand rect slightly for better coverage
+                        rect = rect + fitz.Rect(-2, -2, 2, 2)
                         
-                        # Get approximate font size from rect height
-                        font_size = min(11, rect.height * 0.8)
+                        # Use redaction annotation for cleaner removal
+                        page.add_redact_annot(rect, fill=(1, 1, 1))
+                        page.apply_redactions()
+                        
+                        # Calculate font size from rect height
+                        font_size = max(6, min(12, rect.height * 0.75))
                         
                         # Insert translated text
-                        page.insert_textbox(
-                            rect,
-                            block.translated_text,
-                            fontsize=font_size,
-                            fontname="helv",
-                            color=(0, 0, 0),
-                            align=fitz.TEXT_ALIGN_LEFT,
-                        )
-                        break  # Only replace first instance
-                    except Exception:
-                        pass
+                        try:
+                            page.insert_textbox(
+                                rect,
+                                block.translated_text,
+                                fontsize=font_size,
+                                fontname="helv",
+                                color=(0, 0, 0),
+                                align=fitz.TEXT_ALIGN_LEFT,
+                            )
+                        except:
+                            # Fallback: insert as text at position
+                            page.insert_text(
+                                fitz.Point(rect.x0, rect.y0 + font_size),
+                                block.translated_text[:200],  # Limit length
+                                fontsize=font_size,
+                                fontname="helv",
+                            )
+                        
+                        replaced_count += 1
+                        break  # Only replace first instance of this block
+                    except Exception as e:
+                        # Continue to next instance
+                        continue
+                
+                if replaced_count > 0:
+                    break  # Found on this page, don't search other pages
+        
+        return replaced_count
     
     def _render_overlay_mode(self, page, blocks: list[Block]):
         """Render translations as overlay on original text."""

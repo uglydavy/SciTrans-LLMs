@@ -51,20 +51,20 @@ def launch(port: int = 7860, share: bool = False):
         return list(set(e))
     
     def get_preview(path: str, page_num: int = 0) -> str:
-        """Get PDF preview as base64 image, fit to screen."""
+        """Get PDF preview as base64 image, constrained to fit preview area."""
         try:
             import fitz
             doc = fitz.open(path)
             if page_num < len(doc):
-                # Higher resolution and fit to screen
-                pix = doc[page_num].get_pixmap(matrix=fitz.Matrix(2.5, 2.5))
+                # Use moderate resolution to fit in preview area
+                pix = doc[page_num].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
                 b64 = base64.b64encode(pix.tobytes("png")).decode()
                 doc.close()
-                return f'<img src="data:image/png;base64,{b64}" style="max-width:100%;max-height:100%;object-fit:contain;"/>'
+                return f'<img src="data:image/png;base64,{b64}" style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;"/>'
             doc.close()
         except Exception as ex:
             log_event(f"Preview error: {ex}", "ERROR")
-        return '<div style="padding:40px;text-align:center;color:#888;">No preview available</div>'
+        return '<div style="padding:20px;text-align:center;color:#888;font-size:11px;">No preview available</div>'
     
     def parse_gloss(content: bytes, fname: str):
         try:
@@ -92,25 +92,24 @@ def launch(port: int = 7860, share: bool = False):
     CSS = """<style>
 :root { --bg-card: rgba(30,35,45,0.95); --border: rgba(100,100,120,0.3); }
 html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!important; }
-.nicegui-content, .q-page-container { height:calc(100vh - 52px)!important; overflow:hidden!important; }
+.nicegui-content, .q-page-container { height:calc(100vh - 48px)!important; overflow:hidden!important; }
 .q-tab-panels, .q-tab-panel { height:100%!important; overflow:hidden!important; padding:0!important; }
-.main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:6px 12px; gap:10px; box-sizing:border-box; overflow:hidden; }
-.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; min-height:0; }
-.panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
-.card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:8px; flex-shrink:0; }
-.card-title { font-weight:600; font-size:11px; margin-bottom:4px; border-bottom:1px solid var(--border); padding-bottom:3px; }
-.upload-zone-wrapper { border:2px dashed var(--border); border-radius:6px; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:100px; }
-.upload-zone-wrapper:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
-.upload-zone-wrapper .q-uploader { width:100%!important; border:none!important; background:transparent!important; }
-.upload-zone-wrapper .q-uploader__header { min-height:100px!important; display:flex!important; align-items:center!important; justify-content:center!important; padding:0!important; }
-.upload-zone-wrapper .q-uploader__list { display:none!important; }
-.upload-zone-wrapper .q-btn { display:none!important; }
-.preview-fit { width:100%; height:calc(100% - 45px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
-.preview-fit img { max-width:100%; max-height:100%; object-fit:contain; }
+.main-row { display:flex; width:100%; height:calc(100vh - 110px)!important; padding:4px 8px; gap:8px; box-sizing:border-box; overflow:hidden; }
+.panel { flex:1; max-width:50%; height:100%; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:4px; min-height:0; }
+.panel::-webkit-scrollbar { width:4px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:2px; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:4px; padding:6px; flex-shrink:0; }
+.card-title { font-weight:600; font-size:10px; margin-bottom:3px; border-bottom:1px solid var(--border); padding-bottom:2px; }
+.upload-zone { border:2px dashed var(--border); border-radius:4px; padding:8px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.upload-zone:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
+.preview-card { flex:1!important; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.preview-area { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:200px; max-height:calc(100vh - 350px); border-radius:4px; }
+.preview-area img { max-width:100%; max-height:100%; object-fit:contain; }
+.action-row { display:flex; gap:4px; margin-top:4px; }
+.action-row .q-btn { flex:1; font-size:10px!important; padding:4px 8px!important; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
 body.body--light .q-header { background:#4f46e5!important; }
 body.body--light .q-tab-panels { background:#f5f5f5!important; }
-body.body--light .preview-fit { background:#e8e8e8; }
+body.body--light .preview-area { background:#e8e8e8; }
 </style>"""
     
     @ui.page('/')
@@ -154,14 +153,14 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             upload_status = ui.label('No file selected').classes('text-xs opacity-70 mb-2')
                             
                             # Upload handler function
-                            async def handle_upload(e):
-                                try:
+                                async def handle_upload(e):
+                                    try:
                                     # Handle NiceGUI upload event - try multiple approaches
                                     content = None
                                     fname = 'document.pdf'
                                     
                                     # Method 1: e.content (most common)
-                                    if hasattr(e, 'content'):
+                                            if hasattr(e, 'content'):
                                         if hasattr(e.content, 'read'):
                                             content = await e.content.read()
                                         else:
@@ -182,7 +181,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                         try:
                                             if hasattr(e, 'read'):
                                                 content = await e.read()
-                                            else:
+                                        else:
                                                 content = e
                                         except:
                                             pass
@@ -204,17 +203,17 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     if content[:4] != b'%PDF':
                                         ui.notify('Invalid PDF file', type='warning')
                                         return
-                                    
-                                    tmp = Path(tempfile.mkdtemp()) / fname
-                                    tmp.write_bytes(content)
+                                        
+                                        tmp = Path(tempfile.mkdtemp()) / fname
+                                            tmp.write_bytes(content)
                                     
                                     # Verify file was written correctly
                                     if not tmp.exists() or tmp.stat().st_size == 0:
                                         ui.notify('Failed to save file', type='warning')
                                         return
-                                    
-                                    state.uploaded_pdf_path = str(tmp)
-                                    state.uploaded_pdf_name = fname
+                                        
+                                        state.uploaded_pdf_path = str(tmp)
+                                        state.uploaded_pdf_name = fname
                                     upload_status.text = f'✓ Loaded: {fname}'
                                     
                                     # Reset translated preview
@@ -226,16 +225,16 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     current_page_num.value = 0
                                     update_page_count()
                                     
-                                    log_event(f"Uploaded: {fname}")
-                                    ui.notify(f'File loaded: {fname}', type='positive')
+                                        log_event(f"Uploaded: {fname}")
+                                        ui.notify(f'File loaded: {fname}', type='positive')
                                     
                                     # Update system logs in real-time
                                     try:
                                         dev_logs.value = '\n'.join(system_logs[-50:])
                                     except:
                                         pass
-                                except Exception as ex:
-                                    log_event(f"Upload error: {ex}", "ERROR")
+                                    except Exception as ex:
+                                        log_event(f"Upload error: {ex}", "ERROR")
                                     import traceback
                                     log_event(traceback.format_exc(), "ERROR")
                                     ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
@@ -248,36 +247,40 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             with ui.tab_panels(upload_tabs, value=upload_tab).classes('w-full'):
                                 # Upload tab
                                 with ui.tab_panel(upload_tab).classes('p-0'):
+                                    with ui.element('div').classes('upload-zone') as upload_zone:
+                                        ui.icon('upload_file', size='24px').classes('opacity-50')
+                                        ui.label('Drop PDF or click').classes('text-xs opacity-70')
                                     upload_comp = ui.upload(
                                         on_upload=handle_upload,
                                         auto_upload=True,
                                         max_files=1
-                                    ).props('accept=".pdf"').classes('w-full upload-zone-wrapper')
+                                    ).props('accept=".pdf"').style('position:absolute; opacity:0; width:100%; height:100%; top:0; left:0; cursor:pointer;')
+                                    upload_zone.on('click', lambda: upload_comp.run_method('pickFiles'))
                                 
                                 # URL tab
                                 with ui.tab_panel(url_tab).classes('p-0'):
                                     with ui.row().classes('w-full gap-2 items-center'):
                                         url_input = ui.input(placeholder='https://arxiv.org/pdf/...').classes('flex-grow').props('dense')
+                                
+                                async def fetch_url():
+                                    url = url_input.value.strip()
+                                    if not url:
+                                        ui.notify('Enter a URL', type='warning')
+                                        return
+                                    upload_status.text = 'Fetching...'
+                                    try:
+                                        import urllib.request
+                                        log_event(f"Fetching: {url}")
+                                        tmp = Path(tempfile.mkdtemp())
+                                        fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
+                                        if not fname.endswith('.pdf'): fname += '.pdf'
+                                        fpath = tmp / fname
                                         
-                                        async def fetch_url():
-                                            url = url_input.value.strip()
-                                            if not url:
-                                                ui.notify('Enter a URL', type='warning')
-                                                return
-                                            upload_status.text = 'Fetching...'
-                                            try:
-                                                import urllib.request
-                                                log_event(f"Fetching: {url}")
-                                                tmp = Path(tempfile.mkdtemp())
-                                                fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
-                                                if not fname.endswith('.pdf'): fname += '.pdf'
-                                                fpath = tmp / fname
-                                                
-                                                loop = asyncio.get_event_loop()
-                                                await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
-                                                
-                                                state.uploaded_pdf_path = str(fpath)
-                                                state.uploaded_pdf_name = fname
+                                        loop = asyncio.get_event_loop()
+                                        await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
+                                        
+                                        state.uploaded_pdf_path = str(fpath)
+                                        state.uploaded_pdf_name = fname
                                                 upload_status.text = f'✓ Loaded: {fname}'
                                                 
                                                 # Reset translated preview
@@ -288,19 +291,19 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                 current_page_num.value = 0
                                                 update_page_count()
                                                 
-                                                log_event(f"Downloaded: {fname}")
-                                                ui.notify('PDF downloaded', type='positive')
+                                        log_event(f"Downloaded: {fname}")
+                                        ui.notify('PDF downloaded', type='positive')
                                                 
                                                 # Update system logs in real-time
                                                 try:
                                                     dev_logs.value = '\n'.join(system_logs[-50:])
                                                 except:
                                                     pass
-                                            except Exception as ex:
-                                                upload_status.text = 'Download failed'
-                                                log_event(f"URL error: {ex}", "ERROR")
-                                                ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
-                                        
+                                    except Exception as ex:
+                                        upload_status.text = 'Download failed'
+                                        log_event(f"URL error: {ex}", "ERROR")
+                                        ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
+                                
                                         ui.button('Fetch', on_click=fetch_url, icon='download').props('dense size=sm')
                         
                         # Translation Settings
@@ -376,25 +379,25 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         # Translate Button
                         translate_btn = ui.button('Translate Document', icon='translate').classes('w-full').props('color=primary size=sm')
                     
-                    # RIGHT PANEL
+                    # RIGHT PANEL - Preview and Actions
                     with ui.element('div').classes('panel'):
-                        # Preview with tabs
-                        with ui.element('div').classes('card').style('flex:1; display:flex; flex-direction:column;'):
-                            ui.label('Document Preview').classes('card-title')
+                        # Preview card
+                        with ui.element('div').classes('card preview-card'):
+                            ui.label('Preview').classes('card-title')
                             
                             # Tabs for Source/Translated
-                            with ui.tabs().classes('w-full mb-2') as preview_tabs:
+                            with ui.tabs().classes('w-full').style('min-height:24px;') as preview_tabs:
                                 source_tab = ui.tab('Source')
                                 translated_tab = ui.tab('Translated')
                             
-                            with ui.tab_panels(preview_tabs, value=source_tab).classes('flex-1').style('min-height:0;'):
+                            with ui.tab_panels(preview_tabs, value=source_tab).style('flex:1; min-height:0; overflow:hidden;'):
                                 # Source preview
-                                with ui.tab_panel(source_tab).classes('p-0').style('height:100%;'):
-                                    with ui.element('div').classes('preview-fit'):
-                                        preview_html = ui.html('<div style="padding:40px;text-align:center;color:#666;">Upload a document to preview</div>', sanitize=False).style('width:100%;height:100%;')
+                                with ui.tab_panel(source_tab).classes('p-0').style('height:100%; display:flex; flex-direction:column;'):
+                                    with ui.element('div').classes('preview-area'):
+                                        preview_html = ui.html('<div style="padding:20px;text-align:center;color:#666;font-size:11px;">Upload a document</div>', sanitize=False)
                                     
-                                    # Page navigation for source
-                                    with ui.row().classes('w-full justify-center gap-2 mt-2'):
+                                    # Page navigation
+                                    with ui.row().classes('w-full justify-center gap-1 py-1').style('flex-shrink:0;'):
                                         def prev_source():
                                             if current_page_num.value > 0:
                                                 current_page_num.value -= 1
@@ -413,10 +416,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                     preview_html.set_content(get_preview(state.uploaded_pdf_path, current_page_num.value))
                                                 update_page_count()
                                         
-                                        ui.button(icon='chevron_left', on_click=prev_source).props('flat dense')
-                                        current_page_num = ui.number(value=0, min=0).props('dense readonly').style('width:80px; display:none;')
-                                        page_label_source = ui.label('Page 0 / 0').classes('text-sm')
-                                        ui.button(icon='chevron_right', on_click=next_source).props('flat dense')
+                                        ui.button(icon='chevron_left', on_click=prev_source).props('flat dense size=xs')
+                                        current_page_num = ui.number(value=0, min=0).props('dense readonly').style('display:none;')
+                                        page_label_source = ui.label('Page 0/0').classes('text-xs')
+                                        ui.button(icon='chevron_right', on_click=next_source).props('flat dense size=xs')
                                         
                                         def update_page_count():
                                             if state.uploaded_pdf_path:
@@ -425,17 +428,17 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                     doc = fitz.open(state.uploaded_pdf_path)
                                                     max_pages = len(doc)
                                                     doc.close()
-                                                    page_label_source.text = f'Page {int(current_page_num.value)+1} / {max_pages}'
+                                                    page_label_source.text = f'Page {int(current_page_num.value)+1}/{max_pages}'
                                                 except:
                                                     page_label_source.text = f'Page {int(current_page_num.value)+1}'
                                 
                                 # Translated preview
-                                with ui.tab_panel(translated_tab).classes('p-0').style('height:100%;'):
-                                    with ui.element('div').classes('preview-fit'):
-                                        translated_preview_html = ui.html('<div style="padding:40px;text-align:center;color:#666;">No translation yet</div>', sanitize=False).style('width:100%;height:100%;')
+                                with ui.tab_panel(translated_tab).classes('p-0').style('height:100%; display:flex; flex-direction:column;'):
+                                    with ui.element('div').classes('preview-area'):
+                                        translated_preview_html = ui.html('<div style="padding:20px;text-align:center;color:#666;font-size:11px;">No translation yet</div>', sanitize=False)
                                     
-                                    # Page navigation for translated
-                                    with ui.row().classes('w-full justify-center gap-2 mt-2'):
+                                    # Page navigation
+                                    with ui.row().classes('w-full justify-center gap-1 py-1').style('flex-shrink:0;'):
                                         def prev_translated():
                                             if translated_page_num.value > 0:
                                                 translated_page_num.value -= 1
@@ -454,10 +457,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                     translated_preview_html.set_content(get_preview(state.translated_pdf_path, translated_page_num.value))
                                                 update_translated_page_count()
                                         
-                                        ui.button(icon='chevron_left', on_click=prev_translated).props('flat dense')
-                                        translated_page_num = ui.number(value=0, min=0).props('dense readonly').style('width:80px; display:none;')
-                                        page_label_translated = ui.label('Page 0 / 0').classes('text-sm')
-                                        ui.button(icon='chevron_right', on_click=next_translated).props('flat dense')
+                                        ui.button(icon='chevron_left', on_click=prev_translated).props('flat dense size=xs')
+                                        translated_page_num = ui.number(value=0, min=0).props('dense readonly').style('display:none;')
+                                        page_label_translated = ui.label('Page 0/0').classes('text-xs')
+                                        ui.button(icon='chevron_right', on_click=next_translated).props('flat dense size=xs')
                                         
                                         def update_translated_page_count():
                                             if state.translated_pdf_path:
@@ -466,24 +469,22 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                     doc = fitz.open(state.translated_pdf_path)
                                                     max_pages = len(doc)
                                                     doc.close()
-                                                    page_label_translated.text = f'Page {int(translated_page_num.value)+1} / {max_pages}'
+                                                    page_label_translated.text = f'Page {int(translated_page_num.value)+1}/{max_pages}'
                                                 except:
                                                     page_label_translated.text = f'Page {int(translated_page_num.value)+1}'
                         
-                        # Progress
+                        # Progress card
                         with ui.element('div').classes('card'):
-                            ui.label('Progress').classes('card-title')
                             prog_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
-                            prog_text = ui.label('Ready').classes('text-xs opacity-70 mt-1')
-                            log_area = ui.textarea().props('readonly rows=3 dense').classes('w-full mt-1 text-xs font-mono')
+                            prog_text = ui.label('Ready').classes('text-xs opacity-70')
+                            log_area = ui.textarea().props('readonly rows=2 dense').classes('w-full text-xs font-mono').style('max-height:50px;')
                         
-                        # Post-translation actions
+                        # Actions card
                         with ui.element('div').classes('card'):
-                            ui.label('Actions').classes('card-title')
-                            with ui.row().classes('w-full gap-2'):
-                                download_btn = ui.button('Download', icon='download').classes('flex-1').props('color=positive size=sm disabled')
-                                retranslate_btn = ui.button('Retranslate', icon='refresh').classes('flex-1').props('outline size=sm disabled')
-                                tweak_btn = ui.button('Tweak', icon='tune').classes('flex-1').props('outline size=sm disabled')
+                            with ui.row().classes('action-row'):
+                                download_btn = ui.button('Download', icon='download').props('color=positive size=xs dense disabled')
+                                retranslate_btn = ui.button('New', icon='refresh').props('outline size=xs dense disabled')
+                                tweak_btn = ui.button('Tweak', icon='tune').props('outline size=xs dense disabled')
                 
                 # Translate logic
                 async def do_translate():
@@ -491,11 +492,11 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         ui.notify('Upload a document first', type='warning')
                         return
                     try:
-                        translate_btn.disable()
-                        download_btn.props('disabled')
+                    translate_btn.disable()
+                    download_btn.props('disabled')
                         retranslate_btn.props('disabled')
                         tweak_btn.props('disabled')
-                        prog_bar.value = 0
+                    prog_bar.value = 0
                         translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>')
                     except RuntimeError as e:
                         # Client disconnected, can't update UI
@@ -512,9 +513,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                     
                     def log(m):
                         try:
-                            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
-                            log_area.value = '\n'.join(logs[-6:])
-                            log_event(m)
+                        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
+                        log_area.value = '\n'.join(logs[-6:])
+                        log_event(m)
                         except RuntimeError as e:
                             # Client disconnected, ignore UI updates
                             if 'client' not in str(e).lower():
@@ -540,7 +541,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         
                         def cb(m):
                             try:
-                                log(m)
+                            log(m)
                                 log_event(m)  # Also log to system logs for real-time updates
                                 if 'pars' in m.lower(): 
                                     try:
@@ -567,8 +568,8 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         
                         await asyncio.sleep(0.1)
                         try:
-                            prog_bar.value = 0.25
-                            prog_text.text = "Translating..."
+                        prog_bar.value = 0.25
+                        prog_text.text = "Translating..."
                         except RuntimeError as e:
                             # Client disconnected
                             if 'client' not in str(e).lower():
@@ -592,23 +593,23 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         ))
                         
                         try:
-                            prog_bar.value = 1.0
+                        prog_bar.value = 1.0
                         except:
                             pass
                         
                         if result.success:
                             try:
-                                log("Translation complete")
-                                prog_text.text = "Complete"
-                                if out.exists():
-                                    state.translated_pdf_path = str(out)
-                                    download_btn.props(remove='disabled')
+                            log("Translation complete")
+                            prog_text.text = "Complete"
+                            if out.exists():
+                                state.translated_pdf_path = str(out)
+                                download_btn.props(remove='disabled')
                                     retranslate_btn.props(remove='disabled')
                                     tweak_btn.props(remove='disabled')
                                     translated_preview_html.set_content(get_preview(str(out), 0))
                                     translated_page_num.value = 0
                                     update_translated_page_count()
-                                ui.notify('Translation complete', type='positive')
+                            ui.notify('Translation complete', type='positive')
                             except RuntimeError as e:
                                 # Client disconnected, just log the result
                                 if 'client' not in str(e).lower():
@@ -618,15 +619,15 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                 log_event(f"UI update error after translation: {ex}", "ERROR")
                         else:
                             try:
-                                log(f"Errors: {result.errors[:2]}")
-                                prog_text.text = "Completed with errors"
+                            log(f"Errors: {result.errors[:2]}")
+                            prog_text.text = "Completed with errors"
                             except:
                                 pass
                     except Exception as ex:
                         try:
-                            log(f"Error: {ex}")
-                            prog_text.text = "Error"
-                            log_event(f"Translation error: {ex}", "ERROR")
+                        log(f"Error: {ex}")
+                        prog_text.text = "Error"
+                        log_event(f"Translation error: {ex}", "ERROR")
                             import traceback
                             log_event(traceback.format_exc(), "ERROR")
                             ui.notify(f'Translation failed: {str(ex)[:80]}', type='negative')
@@ -640,7 +641,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             pass
                     finally:
                         try:
-                            translate_btn.enable()
+                        translate_btn.enable()
                         except:
                             pass
                 
