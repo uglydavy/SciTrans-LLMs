@@ -147,10 +147,20 @@ class TranslationPipeline:
     def _init_components(self) -> None:
         """Initialize pipeline components based on config."""
         # Translator
-        self.translator = create_translator(
+        base_translator = create_translator(
             backend=self.config.translator_backend,
             **self.config.translator_kwargs,
         )
+        
+        # Wrap with reranking if num_candidates > 1
+        if self.config.num_candidates > 1:
+            from scitrans_llms.refine.rerank import RerankedTranslator
+            self.translator = RerankedTranslator(
+                base_translator=base_translator,
+                num_candidates=self.config.num_candidates,
+            )
+        else:
+            self.translator = base_translator
         
         # Glossary
         if self.config.enable_glossary:
@@ -230,9 +240,42 @@ class TranslationPipeline:
                     target_lang=document.target_lang,
                 )
                 
-                # Translate
-                result = self.translator.translate_block(block, context)
-                translated_text = result.text
+                # Translate with candidates if reranking enabled
+                num_cands = self.config.num_candidates if self.config.num_candidates > 1 else 1
+                
+                # Use translate() directly to get candidates
+                text_to_translate = block.masked_text if block.masked_text else block.source_text
+                result = self.translator.translate(text_to_translate, context, num_candidates=num_cands)
+                
+                # If we have multiple candidates, use reranking
+                if num_cands > 1 and (result.candidates or num_cands > 1):
+                    from scitrans_llms.refine.rerank import CandidateReranker
+                    reranker = CandidateReranker(use_llm_scoring=False)
+                    
+                    # Collect all candidates
+                    candidates = [result.text]
+                    if result.candidates:
+                        candidates.extend(result.candidates[:num_cands-1])
+                    elif num_cands > 1:
+                        # Generate more candidates if translator doesn't support it
+                        for _ in range(num_cands - 1):
+                            alt_result = self.translator.translate(text_to_translate, context, num_candidates=1)
+                            if alt_result.text not in candidates:
+                                candidates.append(alt_result.text)
+                    
+                    if len(candidates) > 1:
+                        rerank_result = reranker.rerank(
+                            source_text=text_to_translate,
+                            candidates=candidates,
+                            context=context,
+                            glossary=self.glossary,
+                            source_masked=block.masked_text,
+                        )
+                        translated_text = rerank_result.best_candidate
+                    else:
+                        translated_text = result.text
+                else:
+                    translated_text = result.text
                 
                 # Preserve list structure (1., 1.1, 2., a), etc.)
                 source_text = block.masked_text or block.source_text
@@ -399,6 +442,7 @@ def translate_document(
         translator_backend=engine,
         enable_glossary=True,
         enable_refinement=quality_loops > 0,
+        num_candidates=3 if enable_rerank else 1,  # Enable reranking by generating multiple candidates
     )
     
     pipeline = TranslationPipeline(config, progress_callback=prog)
@@ -407,11 +451,17 @@ def translate_document(
     # Render translated PDF with actual text overlay
     prog("Rendering translated PDF...", 0.9)
     try:
+        # CRITICAL: Use result.document which contains translated blocks
+        # Verify blocks have translated_text
+        translated_blocks = [b for b in result.document.all_blocks if b.translated_text]
+        if not translated_blocks:
+            raise ValueError("No translated blocks found - translation may have failed")
+        
         render_pdf_output(
-            document=result.document,
+            document=result.document,  # Use translated document
             source_pdf=input_path,
             output_path=output_path,
-            mode="overlay"  # Overlay translated text on original
+            mode="replace"  # Replace mode for better visibility
         )
         prog(f"Saved translated PDF to {output_path}", 1.0)
     except Exception as e:
