@@ -94,14 +94,18 @@ def launch(port: int = 7860, share: bool = False):
 html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!important; }
 .nicegui-content, .q-page-container { height:calc(100vh - 52px)!important; overflow:hidden!important; }
 .q-tab-panels, .q-tab-panel { height:100%!important; overflow:hidden!important; padding:0!important; }
-.main-row { display:flex; width:100%; height:calc(100vh - 100px); padding:8px 16px; gap:16px; box-sizing:border-box; }
-.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+.main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:8px 16px; gap:16px; box-sizing:border-box; overflow:hidden; }
+.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; min-height:0; }
 .panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
 .card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:14px; }
 .card-title { font-weight:600; font-size:14px; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:8px; }
-.upload-zone { border:2px dashed var(--border); border-radius:6px; padding:20px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:120px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-.upload-zone:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
-.preview-fit { width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; }
+.upload-zone-wrapper { position:relative; }
+.upload-zone-wrapper:hover { border-color:#6366f1!important; background:rgba(99,102,241,0.05)!important; }
+.upload-zone-wrapper .q-uploader { width:100%!important; border:none!important; background:transparent!important; }
+.upload-zone-wrapper .q-uploader__input { position:absolute!important; top:0!important; left:0!important; width:100%!important; height:100%!important; opacity:0!important; cursor:pointer!important; z-index:10!important; }
+.upload-zone-wrapper .q-uploader__list { display:none!important; }
+.upload-zone-wrapper .q-btn { display:none!important; }
+.preview-fit { width:100%; height:calc(100% - 60px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
 .preview-fit img { max-width:100%; max-height:100%; object-fit:contain; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
 body.body--light .q-header { background:#4f46e5!important; }
@@ -127,15 +131,15 @@ body.body--light .preview-fit { background:#e8e8e8; }
                 else: dark.enable()
                 state.dark_mode = dark.value
                 log_event(f"Theme: {'dark' if state.dark_mode else 'light'}")
-            ui.button(icon='contrast', on_click=toggle_dark).props('flat round dense text-color=white size=sm')
+            ui.button(icon='dark_mode', on_click=toggle_dark).props('flat round dense text-color=white size=md').tooltip('Toggle dark mode')
         
-        # Tabs
+        # Tabs with icons
         with ui.tabs().classes('w-full bg-gray-800 text-white') as tabs:
-            t_translate = ui.tab('Translate')
-            t_testing = ui.tab('Testing')
-            t_glossary = ui.tab('Glossary')
-            t_developer = ui.tab('Developer')
-            t_settings = ui.tab('Settings')
+            t_translate = ui.tab('Translate', icon='translate')
+            t_testing = ui.tab('Testing', icon='science')
+            t_glossary = ui.tab('Glossary', icon='book')
+            t_developer = ui.tab('Developer', icon='code')
+            t_settings = ui.tab('Settings', icon='settings')
         
         with ui.tab_panels(tabs, value=t_translate).classes('w-full flex-grow'):
             
@@ -183,20 +187,31 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                         except:
                                             pass
                                     
-                                    if not content or (isinstance(content, bytes) and len(content) == 0):
+                                    if not content:
                                         ui.notify('Empty file received', type='warning')
                                         return
                                     
+                                    # Ensure content is bytes
+                                    if not isinstance(content, bytes):
+                                        ui.notify('Invalid file format - must be PDF', type='warning')
+                                        return
+                                    
+                                    if len(content) == 0:
+                                        ui.notify('Empty file received', type='warning')
+                                        return
+                                    
+                                    # Verify it's a valid PDF by checking magic bytes
+                                    if content[:4] != b'%PDF':
+                                        ui.notify('Invalid PDF file', type='warning')
+                                        return
+                                    
                                     tmp = Path(tempfile.mkdtemp()) / fname
-                                    if isinstance(content, bytes):
-                                        tmp.write_bytes(content)
-                                    else:
-                                        # Try to write as text if not bytes
-                                        try:
-                                            tmp.write_text(str(content), encoding='utf-8')
-                                        except:
-                                            ui.notify('Invalid file format', type='warning')
-                                            return
+                                    tmp.write_bytes(content)
+                                    
+                                    # Verify file was written correctly
+                                    if not tmp.exists() or tmp.stat().st_size == 0:
+                                        ui.notify('Failed to save file', type='warning')
+                                        return
                                     
                                     state.uploaded_pdf_path = str(tmp)
                                     state.uploaded_pdf_name = fname
@@ -204,10 +219,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     
                                     # Reset translated preview
                                     state.translated_pdf_path = None
-                                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
+                                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
                                     
                                     # Update source preview
-                                    preview_html.set_content(get_preview(str(tmp), 0))
+                                    preview_html.set_content(get_preview(str(tmp), 0), sanitize=False)
                                     current_page_num.value = 0
                                     update_page_count()
                                     
@@ -219,12 +234,15 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     log_event(traceback.format_exc(), "ERROR")
                                     ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
                             
-                            # Upload component with drag & drop - styled as zone
-                            upload_comp = ui.upload(
-                                on_upload=handle_upload,
-                                auto_upload=True,
-                                max_files=1
-                            ).props('accept=".pdf"').classes('w-full upload-zone')
+                            # Upload component with drag & drop - make entire zone clickable
+                            with ui.element('div').classes('upload-zone-wrapper'):
+                                ui.label('📄 Drag & Drop PDF here').classes('text-sm font-medium mb-1')
+                                ui.label('or click anywhere to browse').classes('text-xs opacity-70')
+                                upload_comp = ui.upload(
+                                    on_upload=handle_upload,
+                                    auto_upload=True,
+                                    max_files=1
+                                ).props('accept=".pdf"').classes('w-full')
                             
                             ui.label('Or enter URL:').classes('text-xs mt-3 opacity-70')
                             with ui.row().classes('w-full gap-2 items-center'):
@@ -253,9 +271,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                         
                                         # Reset translated preview
                                         state.translated_pdf_path = None
-                                        translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
+                                        translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
                                         
-                                        preview_html.set_content(get_preview(str(fpath), 0))
+                                        preview_html.set_content(get_preview(str(fpath), 0), sanitize=False)
                                         current_page_num.value = 0
                                         update_page_count()
                                         
@@ -443,9 +461,13 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             prog_text = ui.label('Ready').classes('text-sm opacity-70 mt-1')
                             log_area = ui.textarea().props('readonly rows=4').classes('w-full mt-2 text-xs font-mono')
                         
-                        # Download
+                        # Post-translation actions
                         with ui.element('div').classes('card'):
-                            download_btn = ui.button('Download Translated Document').classes('w-full').props('color=positive size=lg disabled')
+                            ui.label('Actions').classes('card-title')
+                            with ui.row().classes('w-full gap-2'):
+                                download_btn = ui.button('Download', icon='download').classes('flex-1').props('color=positive size=lg disabled')
+                                retranslate_btn = ui.button('Retranslate', icon='refresh').classes('flex-1').props('outline size=lg disabled')
+                                tweak_btn = ui.button('Tweak Options', icon='tune').classes('flex-1').props('outline size=lg disabled')
                 
                 # Translate logic
                 async def do_translate():
@@ -454,12 +476,14 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         return
                     translate_btn.disable()
                     download_btn.props('disabled')
+                    retranslate_btn.props('disabled')
+                    tweak_btn.props('disabled')
                     prog_bar.value = 0
                     logs = []
                     
                     # Reset translated preview
                     state.translated_pdf_path = None
-                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>')
+                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>', sanitize=False)
                     
                     def log(m):
                         logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
@@ -512,7 +536,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             if out.exists():
                                 state.translated_pdf_path = str(out)
                                 download_btn.props(remove='disabled')
-                                translated_preview_html.set_content(get_preview(str(out), 0))
+                                retranslate_btn.props(remove='disabled')
+                                tweak_btn.props(remove='disabled')
+                                translated_preview_html.set_content(get_preview(str(out), 0), sanitize=False)
                                 translated_page_num.value = 0
                                 update_translated_page_count()
                             ui.notify('Translation complete', type='positive')
@@ -525,11 +551,32 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         log_event(f"Translation error: {ex}", "ERROR")
                         import traceback
                         log_event(traceback.format_exc(), "ERROR")
+                        ui.notify(f'Translation failed: {str(ex)[:80]}', type='negative')
                     finally:
                         translate_btn.enable()
                 
                 translate_btn.on_click(do_translate)
                 download_btn.on_click(lambda: ui.download(state.translated_pdf_path) if state.translated_pdf_path else None)
+                
+                def do_retranslate():
+                    """Reset and allow retranslation"""
+                    state.translated_pdf_path = None
+                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
+                    download_btn.props('disabled')
+                    retranslate_btn.props('disabled')
+                    tweak_btn.props('disabled')
+                    prog_bar.value = 0
+                    prog_text.text = 'Ready'
+                    log_area.value = ''
+                    ui.notify('Ready for new translation', type='info')
+                
+                retranslate_btn.on_click(do_retranslate)
+                
+                def do_tweak():
+                    """Scroll to settings"""
+                    ui.notify('Adjust settings above and click Translate', type='info')
+                
+                tweak_btn.on_click(do_tweak)
             
             # ==================== TESTING TAB ====================
             with ui.tab_panel(t_testing).classes('p-0'):
