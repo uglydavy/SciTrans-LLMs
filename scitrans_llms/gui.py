@@ -94,19 +94,15 @@ def launch(port: int = 7860, share: bool = False):
 html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!important; }
 .nicegui-content, .q-page-container { height:calc(100vh - 52px)!important; overflow:hidden!important; }
 .q-tab-panels, .q-tab-panel { height:100%!important; overflow:hidden!important; padding:0!important; }
-.main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:8px 16px; gap:12px; box-sizing:border-box; overflow:hidden; }
-.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; min-height:0; }
+.main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:6px 12px; gap:10px; box-sizing:border-box; overflow:hidden; }
+.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; min-height:0; }
 .panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
-.card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:12px; flex-shrink:0; }
-.card-title { font-weight:600; font-size:13px; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:6px; }
-.upload-zone-wrapper { position:relative; border:2px dashed var(--border); border-radius:6px; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:100px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; flex-shrink:0; }
+.card-title { font-weight:600; font-size:12px; margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+.upload-zone-wrapper { position:relative; border:2px dashed var(--border); border-radius:6px; padding:12px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .upload-zone-wrapper:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
-.upload-zone-wrapper .q-uploader { width:100%!important; height:100%!important; border:none!important; background:transparent!important; position:absolute!important; top:0!important; left:0!important; }
-.upload-zone-wrapper .q-uploader__input { position:absolute!important; top:0!important; left:0!important; width:100%!important; height:100%!important; opacity:0!important; cursor:pointer!important; z-index:10!important; }
-.upload-zone-wrapper .q-uploader__list { display:none!important; }
-.upload-zone-wrapper .q-btn { display:none!important; }
-.upload-zone-wrapper > *:not(.q-uploader) { position:relative; z-index:1; pointer-events:none; }
-.preview-fit { width:100%; height:calc(100% - 50px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
+.upload-zone-wrapper .q-label { pointer-events:none; }
+.preview-fit { width:100%; height:calc(100% - 45px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
 .preview-fit img { max-width:100%; max-height:100%; object-fit:contain; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
 body.body--light .q-header { background:#4f46e5!important; }
@@ -236,21 +232,30 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
                             
                             # Sliding tabs for Upload/URL
-                            with ui.tabs().classes('w-full mb-2').style('min-height:32px;') as upload_tabs:
+                            with ui.tabs().classes('w-full mb-2').style('min-height:28px;') as upload_tabs:
                                 upload_tab = ui.tab('Upload', icon='upload_file')
                                 url_tab = ui.tab('URL', icon='link')
                             
                             with ui.tab_panels(upload_tabs, value=upload_tab).classes('w-full'):
                                 # Upload tab
                                 with ui.tab_panel(upload_tab).classes('p-0'):
-                                    with ui.element('div').classes('upload-zone-wrapper'):
+                                    # Create wrapper div for styling
+                                    upload_wrapper = ui.element('div').classes('upload-zone-wrapper')
+                                    with upload_wrapper:
                                         ui.label('📄 Drag & Drop PDF here').classes('text-xs font-medium mb-1')
                                         ui.label('or click anywhere to browse').classes('text-xs opacity-70')
-                                        upload_comp = ui.upload(
-                                            on_upload=handle_upload,
-                                            auto_upload=True,
-                                            max_files=1
-                                        ).props('accept=".pdf"').classes('w-full')
+                                    
+                                    # Upload component overlays the wrapper
+                                    upload_comp = ui.upload(
+                                        on_upload=handle_upload,
+                                        auto_upload=True,
+                                        max_files=1
+                                    ).props('accept=".pdf"').classes('w-full').style('position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:10;')
+                                    
+                                    # Make wrapper clickable
+                                    def click_upload():
+                                        upload_comp.run_method('pickFiles')
+                                    upload_wrapper.on('click', click_upload)
                                 
                                 # URL tab
                                 with ui.tab_panel(url_tab).classes('p-0'):
@@ -335,19 +340,18 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         
                         # Advanced Settings
                         with ui.element('div').classes('card'):
-                            with ui.expansion('Advanced Settings', icon='tune').classes('w-full'):
-                                ui.markdown('**Note:** Reranking is enabled by default for best quality.').classes('text-xs opacity-70 mb-2')
-                                masking_chk = ui.checkbox('Mask formulas/URLs', value=state.default_masking)
-                                structure_chk = ui.checkbox('Preserve numbering (1.1, I., etc.)', value=state.preserve_structure)
-                                tables_chk = ui.checkbox('Preserve tables', value=state.translate_tables)
-                                figures_chk = ui.checkbox('Preserve figures', value=state.translate_figures)
-                                ui.number(label='Context window (segments)', value=state.context_window, min=1, max=20).classes('w-full mt-2')
-                                ui.markdown('**Note:** MinerU extraction is automatically used for best results.').classes('text-xs opacity-70 mt-2')
+                            with ui.expansion('Advanced Settings', icon='tune').classes('w-full').props('dense'):
+                                ui.markdown('**Note:** Reranking is enabled by default.').classes('text-xs opacity-70 mb-1')
+                                masking_chk = ui.checkbox('Mask formulas/URLs', value=state.default_masking).props('dense')
+                                structure_chk = ui.checkbox('Preserve numbering', value=state.preserve_structure).props('dense')
+                                tables_chk = ui.checkbox('Preserve tables', value=state.translate_tables).props('dense')
+                                figures_chk = ui.checkbox('Preserve figures', value=state.translate_figures).props('dense')
+                                ui.number(label='Context window', value=state.context_window, min=1, max=20).classes('w-full mt-1').props('dense')
                         
                         # Glossary
                         with ui.element('div').classes('card'):
-                            ui.label('Custom Glossary (optional)').classes('card-title')
-                            gloss_status = ui.label('Using default glossary').classes('text-xs opacity-70')
+                            ui.label('Custom Glossary').classes('card-title')
+                            gloss_status = ui.label('Using default glossary').classes('text-xs opacity-70 mb-1')
                             
                             async def handle_gloss(e):
                                 try:
@@ -364,10 +368,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                 except Exception as ex:
                                     gloss_status.text = f'Error: {str(ex)[:30]}'
                             
-                            ui.upload(on_upload=handle_gloss, auto_upload=True).props('accept=".csv,.txt,.json" label="Upload glossary"').classes('w-full')
+                            ui.upload(on_upload=handle_gloss, auto_upload=True).props('accept=".csv,.txt,.json" label="Upload glossary" dense').classes('w-full')
                         
                         # Translate Button
-                        translate_btn = ui.button('Translate Document', icon='translate').classes('w-full').props('color=primary size=md')
+                        translate_btn = ui.button('Translate Document', icon='translate').classes('w-full').props('color=primary size=sm')
                     
                     # RIGHT PANEL
                     with ui.element('div').classes('panel'):
@@ -465,10 +469,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         
                         # Progress
                         with ui.element('div').classes('card'):
-                            ui.label('Translation Progress').classes('card-title')
+                            ui.label('Progress').classes('card-title')
                             prog_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
-                            prog_text = ui.label('Ready').classes('text-sm opacity-70 mt-1')
-                            log_area = ui.textarea().props('readonly rows=4').classes('w-full mt-2 text-xs font-mono')
+                            prog_text = ui.label('Ready').classes('text-xs opacity-70 mt-1')
+                            log_area = ui.textarea().props('readonly rows=3 dense').classes('w-full mt-1 text-xs font-mono')
                         
                         # Post-translation actions
                         with ui.element('div').classes('card'):
