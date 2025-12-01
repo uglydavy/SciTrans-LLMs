@@ -97,13 +97,14 @@ html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!import
 .main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:6px 12px; gap:10px; box-sizing:border-box; overflow:hidden; }
 .panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; min-height:0; }
 .panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
-.card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; flex-shrink:0; }
-.card-title { font-weight:600; font-size:12px; margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:4px; }
-.upload-zone-wrapper { border:2px dashed var(--border); border-radius:6px; padding:20px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:120px; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:8px; flex-shrink:0; }
+.card-title { font-weight:600; font-size:11px; margin-bottom:4px; border-bottom:1px solid var(--border); padding-bottom:3px; }
+.upload-zone-wrapper { border:2px dashed var(--border); border-radius:6px; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:100px; }
 .upload-zone-wrapper:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
 .upload-zone-wrapper .q-uploader { width:100%!important; border:none!important; background:transparent!important; }
-.upload-zone-wrapper .q-uploader__header { min-height:120px!important; display:flex!important; align-items:center!important; justify-content:center!important; }
+.upload-zone-wrapper .q-uploader__header { min-height:100px!important; display:flex!important; align-items:center!important; justify-content:center!important; padding:0!important; }
 .upload-zone-wrapper .q-uploader__list { display:none!important; }
+.upload-zone-wrapper .q-btn { display:none!important; }
 .preview-fit { width:100%; height:calc(100% - 45px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
 .preview-fit img { max-width:100%; max-height:100%; object-fit:contain; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
@@ -227,6 +228,12 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     
                                     log_event(f"Uploaded: {fname}")
                                     ui.notify(f'File loaded: {fname}', type='positive')
+                                    
+                                    # Update system logs in real-time
+                                    try:
+                                        dev_logs.value = '\n'.join(system_logs[-50:])
+                                    except:
+                                        pass
                                 except Exception as ex:
                                     log_event(f"Upload error: {ex}", "ERROR")
                                     import traceback
@@ -245,7 +252,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                         on_upload=handle_upload,
                                         auto_upload=True,
                                         max_files=1
-                                    ).props('accept=".pdf" label="📄 Drag & Drop PDF here or click to browse"').classes('w-full upload-zone-wrapper')
+                                    ).props('accept=".pdf"').classes('w-full upload-zone-wrapper')
                                 
                                 # URL tab
                                 with ui.tab_panel(url_tab).classes('p-0'):
@@ -283,6 +290,12 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                 
                                                 log_event(f"Downloaded: {fname}")
                                                 ui.notify('PDF downloaded', type='positive')
+                                                
+                                                # Update system logs in real-time
+                                                try:
+                                                    dev_logs.value = '\n'.join(system_logs[-50:])
+                                                except:
+                                                    pass
                                             except Exception as ex:
                                                 upload_status.text = 'Download failed'
                                                 log_event(f"URL error: {ex}", "ERROR")
@@ -510,6 +523,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         
                         def cb(m):
                             log(m)
+                            log_event(m)  # Also log to system logs for real-time updates
                             if 'pars' in m.lower(): prog_bar.value = 0.2
                             elif 'translat' in m.lower(): prog_bar.value = 0.5
                             elif 'render' in m.lower(): prog_bar.value = 0.85
@@ -752,10 +766,10 @@ Loading a corpus enhances translation quality by providing domain-specific termi
             with ui.tab_panel(t_developer).classes('p-0'):
                 with ui.element('div').classes('main-row'):
                     with ui.element('div').classes('panel'):
-                        with ui.element('div').classes('card').style('flex:1; display:flex; flex-direction:column; min-height:0;'):
+                        with ui.element('div').classes('card').style('flex:1; display:flex; flex-direction:column; min-height:0; max-height:60vh;'):
                             ui.label('System Logs').classes('card-title')
                             with ui.row().classes('gap-2 mb-2'):
-                                def refresh(): dev_logs.value = '\n'.join(system_logs[-40:])
+                                def refresh(): dev_logs.value = '\n'.join(system_logs[-50:])
                                 def clear(): system_logs.clear(); dev_logs.value = ''
                                 def export():
                                     f = Path(tempfile.mktemp(suffix='.log'))
@@ -764,8 +778,14 @@ Loading a corpus enhances translation quality by providing domain-specific termi
                                 ui.button('Refresh', on_click=refresh).props('dense outline')
                                 ui.button('Clear', on_click=clear).props('dense outline')
                                 ui.button('Export', on_click=export).props('dense outline')
-                            dev_logs = ui.textarea().props('readonly').classes('w-full font-mono text-xs').style('flex:1; min-height:300px;')
-                            dev_logs.value = '\n'.join(system_logs[-40:])
+                            dev_logs = ui.textarea().props('readonly').classes('w-full font-mono text-xs').style('flex:1; min-height:200px; max-height:400px;')
+                            dev_logs.value = '\n'.join(system_logs[-50:])
+                            
+                            # Auto-refresh logs every 2 seconds
+                            def update_logs():
+                                if len(system_logs) > 0:
+                                    dev_logs.value = '\n'.join(system_logs[-50:])
+                            ui.timer(2.0, update_logs)
                     
                     with ui.element('div').classes('panel'):
                         with ui.element('div').classes('card'):
