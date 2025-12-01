@@ -483,7 +483,8 @@ body.body--light .preview-container { background: #e8e8e8; }
                                 with ui.element('div').classes('preview-container'):
                                     with ui.element('div').classes('preview-image') as preview_container:
                                         ui_state.preview_html = ui.html(
-                                            '<div style="padding:40px;text-align:center;color:#888;">Upload or fetch a document</div>'
+                                            content='<div style="padding:40px;text-align:center;color:#888;">Upload or fetch a document</div>',
+                                            sanitize=False
                                         )
                                     
                                     # Navigation
