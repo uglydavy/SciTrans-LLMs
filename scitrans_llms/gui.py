@@ -99,9 +99,11 @@ html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!import
 .panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
 .card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; flex-shrink:0; }
 .card-title { font-weight:600; font-size:12px; margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:4px; }
-.upload-zone-wrapper { position:relative; border:2px dashed var(--border); border-radius:6px; padding:12px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.upload-zone-wrapper { border:2px dashed var(--border); border-radius:6px; padding:20px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:120px; }
 .upload-zone-wrapper:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
-.upload-zone-wrapper .q-label { pointer-events:none; }
+.upload-zone-wrapper .q-uploader { width:100%!important; border:none!important; background:transparent!important; }
+.upload-zone-wrapper .q-uploader__header { min-height:120px!important; display:flex!important; align-items:center!important; justify-content:center!important; }
+.upload-zone-wrapper .q-uploader__list { display:none!important; }
 .preview-fit { width:100%; height:calc(100% - 45px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
 .preview-fit img { max-width:100%; max-height:100%; object-fit:contain; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
@@ -141,7 +143,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
         with ui.tab_panels(tabs, value=t_translate).classes('w-full flex-grow'):
             
             # ==================== TRANSLATE TAB ====================
-            with ui.tab_panel(t_translate).classes('p-0'):
+            with ui.tab_panel(t_translate).classes('p-0').style('height:100%; overflow:hidden;'):
                 with ui.element('div').classes('main-row'):
                     # LEFT PANEL
                     with ui.element('div').classes('panel'):
@@ -216,10 +218,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     
                                     # Reset translated preview
                                     state.translated_pdf_path = None
-                                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
+                                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
                                     
                                     # Update source preview
-                                    preview_html.set_content(get_preview(str(tmp), 0), sanitize=False)
+                                    preview_html.set_content(get_preview(str(tmp), 0))
                                     current_page_num.value = 0
                                     update_page_count()
                                     
@@ -239,23 +241,11 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             with ui.tab_panels(upload_tabs, value=upload_tab).classes('w-full'):
                                 # Upload tab
                                 with ui.tab_panel(upload_tab).classes('p-0'):
-                                    # Create wrapper div for styling
-                                    upload_wrapper = ui.element('div').classes('upload-zone-wrapper')
-                                    with upload_wrapper:
-                                        ui.label('📄 Drag & Drop PDF here').classes('text-xs font-medium mb-1')
-                                        ui.label('or click anywhere to browse').classes('text-xs opacity-70')
-                                    
-                                    # Upload component overlays the wrapper
                                     upload_comp = ui.upload(
                                         on_upload=handle_upload,
                                         auto_upload=True,
                                         max_files=1
-                                    ).props('accept=".pdf"').classes('w-full').style('position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:10;')
-                                    
-                                    # Make wrapper clickable
-                                    def click_upload():
-                                        upload_comp.run_method('pickFiles')
-                                    upload_wrapper.on('click', click_upload)
+                                    ).props('accept=".pdf" label="📄 Drag & Drop PDF here or click to browse"').classes('w-full upload-zone-wrapper')
                                 
                                 # URL tab
                                 with ui.tab_panel(url_tab).classes('p-0'):
@@ -285,9 +275,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                                 
                                                 # Reset translated preview
                                                 state.translated_pdf_path = None
-                                                translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
+                                                translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
                                                 
-                                                preview_html.set_content(get_preview(str(fpath), 0), sanitize=False)
+                                                preview_html.set_content(get_preview(str(fpath), 0))
                                                 current_page_num.value = 0
                                                 update_page_count()
                                                 
@@ -496,7 +486,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                     
                     # Reset translated preview
                     state.translated_pdf_path = None
-                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>', sanitize=False)
+                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>')
                     
                     def log(m):
                         logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
@@ -551,7 +541,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                 download_btn.props(remove='disabled')
                                 retranslate_btn.props(remove='disabled')
                                 tweak_btn.props(remove='disabled')
-                                translated_preview_html.set_content(get_preview(str(out), 0), sanitize=False)
+                                translated_preview_html.set_content(get_preview(str(out), 0))
                                 translated_page_num.value = 0
                                 update_translated_page_count()
                             ui.notify('Translation complete', type='positive')
@@ -574,7 +564,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                 def do_retranslate():
                     """Reset and allow retranslation"""
                     state.translated_pdf_path = None
-                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
+                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>')
                     download_btn.props('disabled')
                     retranslate_btn.props('disabled')
                     tweak_btn.props('disabled')
@@ -592,7 +582,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                 tweak_btn.on_click(do_tweak)
             
             # ==================== TESTING TAB ====================
-            with ui.tab_panel(t_testing).classes('p-0'):
+            with ui.tab_panel(t_testing).classes('p-0').style('height:100%; overflow:hidden;'):
                 with ui.element('div').classes('main-row'):
                     # LEFT - Input & Settings
                     with ui.element('div').classes('panel'):
@@ -762,7 +752,7 @@ Loading a corpus enhances translation quality by providing domain-specific termi
             with ui.tab_panel(t_developer).classes('p-0'):
                 with ui.element('div').classes('main-row'):
                     with ui.element('div').classes('panel'):
-                        with ui.element('div').classes('card'):
+                        with ui.element('div').classes('card').style('flex:1; display:flex; flex-direction:column; min-height:0;'):
                             ui.label('System Logs').classes('card-title')
                             with ui.row().classes('gap-2 mb-2'):
                                 def refresh(): dev_logs.value = '\n'.join(system_logs[-40:])
@@ -774,7 +764,7 @@ Loading a corpus enhances translation quality by providing domain-specific termi
                                 ui.button('Refresh', on_click=refresh).props('dense outline')
                                 ui.button('Clear', on_click=clear).props('dense outline')
                                 ui.button('Export', on_click=export).props('dense outline')
-                            dev_logs = ui.textarea().props('readonly rows=12').classes('w-full font-mono text-xs')
+                            dev_logs = ui.textarea().props('readonly').classes('w-full font-mono text-xs').style('flex:1; min-height:300px;')
                             dev_logs.value = '\n'.join(system_logs[-40:])
                     
                     with ui.element('div').classes('panel'):
