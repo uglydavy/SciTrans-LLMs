@@ -764,6 +764,176 @@ class MinerUPDFParser:
         return BlockType.PARAGRAPH
 
 
+class PDFMinerParser:
+    """Enhanced PDF parser using pdfminer.six for better layout extraction.
+    
+    PDFMiner provides more accurate text extraction with:
+    - Better text block segmentation
+    - Accurate bounding boxes
+    - Reading order detection
+    - Font information
+    """
+    
+    def parse(
+        self,
+        pdf_path: str | Path,
+        pages: Optional[list[int]] = None,
+        source_lang: str = "en",
+        target_lang: str = "fr",
+    ) -> Document:
+        """Parse PDF using pdfminer.six with enhanced layout analysis."""
+        try:
+            from pdfminer.high_level import extract_pages
+            from pdfminer.layout import (
+                LAParams, LTTextBox, LTTextLine, LTChar, 
+                LTFigure, LTTextBoxHorizontal
+            )
+        except ImportError:
+            print("pdfminer not available, falling back to PyMuPDF")
+            return PDFParser().parse(pdf_path, pages, source_lang, target_lang)
+        
+        pdf_path = Path(pdf_path)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+        
+        # Configure pdfminer for better layout
+        laparams = LAParams(
+            line_margin=0.5,
+            word_margin=0.1,
+            char_margin=2.0,
+            boxes_flow=0.5,
+            detect_vertical=False,
+        )
+        
+        all_blocks = []
+        
+        # Extract pages
+        for page_num, page_layout in enumerate(extract_pages(str(pdf_path), laparams=laparams)):
+            # Filter pages if specified
+            if pages is not None and page_num not in pages:
+                continue
+            
+            page_width = page_layout.width
+            page_height = page_layout.height
+            
+            # Process each element on the page
+            for element in page_layout:
+                if isinstance(element, LTTextBox):
+                    # Extract text and bounding box
+                    text = element.get_text().strip()
+                    if not text:
+                        continue
+                    
+                    # PDFMiner uses bottom-left origin, convert to top-left
+                    x0, y0, x1, y1 = element.bbox
+                    bbox = BoundingBox(
+                        x0=x0,
+                        y0=page_height - y1,  # Convert to top-left origin
+                        x1=x1,
+                        y1=page_height - y0,
+                        page=page_num,
+                    )
+                    
+                    # Detect block type and font info
+                    block_type, font_info = self._analyze_text_box(element)
+                    
+                    block = Block(
+                        source_text=text,
+                        block_type=block_type,
+                        bbox=bbox,
+                        metadata={
+                            "font_size": font_info.get("size", 11),
+                            "font_name": font_info.get("name", ""),
+                            "is_bold": font_info.get("bold", False),
+                            "source": "pdfminer",
+                        }
+                    )
+                    all_blocks.append(block)
+        
+        # Create segments (group by page)
+        segments = []
+        blocks_by_page = {}
+        for block in all_blocks:
+            page = block.bbox.page if block.bbox else 0
+            if page not in blocks_by_page:
+                blocks_by_page[page] = []
+            blocks_by_page[page].append(block)
+        
+        for page_num in sorted(blocks_by_page.keys()):
+            segments.append(Segment(
+                blocks=blocks_by_page[page_num],
+                title=f"Page {page_num + 1}",
+            ))
+        
+        return Document(
+            segments=segments,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            title=pdf_path.stem,
+            metadata={
+                "source_file": str(pdf_path),
+                "extractor": "pdfminer",
+                "total_blocks": len(all_blocks),
+            }
+        )
+    
+    def _analyze_text_box(self, text_box) -> tuple:
+        """Analyze a text box to determine type and font info."""
+        from pdfminer.layout import LTChar, LTAnno
+        
+        text = text_box.get_text().strip()
+        font_sizes = []
+        font_names = []
+        
+        # Collect font info from characters
+        for line in text_box:
+            for char in line:
+                if isinstance(char, LTChar):
+                    font_sizes.append(char.size)
+                    font_names.append(char.fontname)
+        
+        # Get dominant font info
+        avg_size = sum(font_sizes) / len(font_sizes) if font_sizes else 11
+        font_name = font_names[0] if font_names else ""
+        is_bold = "Bold" in font_name or "bold" in font_name
+        
+        font_info = {
+            "size": avg_size,
+            "name": font_name,
+            "bold": is_bold,
+        }
+        
+        # Classify block type
+        block_type = BlockType.PARAGRAPH
+        
+        # Heading detection
+        if avg_size > 14 or is_bold:
+            if len(text) < 100:
+                block_type = BlockType.HEADING
+        
+        # Section number detection
+        if re.match(r'^[\d.]+\s+[A-Z]', text) or re.match(r'^[IVX]+\.\s', text):
+            block_type = BlockType.HEADING
+        
+        # Abstract/Keywords detection
+        if text.upper().startswith(('ABSTRACT', 'RÉSUMÉ', 'KEYWORDS')):
+            block_type = BlockType.HEADING
+        
+        # Equation detection
+        if re.search(r'\$\$.*\$\$|\\\[.*\\\]', text):
+            block_type = BlockType.EQUATION
+        
+        # Caption detection
+        if re.match(r'^(Figure|Fig\.|Table|Tab\.)\s*\d', text, re.IGNORECASE):
+            block_type = BlockType.CAPTION
+        
+        # Reference detection
+        if re.match(r'^\[\d+\]', text):
+            block_type = BlockType.REFERENCE
+        
+        return block_type, font_info
+
+
 def parse_pdf(
     pdf_path: str | Path,
     pages: Optional[list[int]] = None,
@@ -771,6 +941,7 @@ def parse_pdf(
     target_lang: str = "fr",
     use_yolo: bool = False,
     use_mineru: bool = False,
+    use_pdfminer: bool = True,  # Default to better extraction
 ) -> Document:
     """Convenience function to parse a PDF.
     
@@ -780,17 +951,30 @@ def parse_pdf(
         source_lang: Source language
         target_lang: Target language
         use_yolo: Whether to use YOLO layout detection
-        use_mineru: Whether to use minerU for extraction (preferred)
+        use_mineru: Whether to use minerU for extraction (requires Python 3.10+)
+        use_pdfminer: Whether to use pdfminer for better extraction (default True)
         
     Returns:
         Parsed Document
     """
-    # Prefer minerU if available and requested
+    # Try minerU first if requested (requires Python 3.10+)
     if use_mineru:
-        parser = MinerUPDFParser()
-        return parser.parse(pdf_path, pages, source_lang, target_lang)
+        try:
+            parser = MinerUPDFParser()
+            if parser.available:
+                return parser.parse(pdf_path, pages, source_lang, target_lang)
+        except Exception:
+            pass
     
-    # Otherwise use PyMuPDF with optional YOLO
+    # Use pdfminer for better layout extraction (default)
+    if use_pdfminer:
+        try:
+            parser = PDFMinerParser()
+            return parser.parse(pdf_path, pages, source_lang, target_lang)
+        except Exception as e:
+            print(f"PDFMiner extraction failed: {e}, falling back to PyMuPDF")
+    
+    # Fallback to PyMuPDF with optional YOLO
     if use_yolo:
         detector = YOLOLayoutDetector()
         if not detector.is_available:

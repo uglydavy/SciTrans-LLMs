@@ -431,7 +431,8 @@ def translate_document(
         pages=page_list,
         source_lang=source_lang,
         target_lang=target_lang,
-        use_mineru=use_mineru,  # Use MinerU for better extraction
+        use_mineru=use_mineru,
+        use_pdfminer=True,  # Use PDFMiner for better block extraction
     )
     
     # Configure pipeline
