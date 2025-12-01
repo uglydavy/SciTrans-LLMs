@@ -330,6 +330,7 @@ def translate_document(
     preserve_figures: bool = True,
     quality_loops: int = 3,
     enable_rerank: bool = True,
+    use_mineru: bool = True,  # MinerU enforced by default
     progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """Translate a PDF document and save the result.
@@ -345,6 +346,7 @@ def translate_document(
         preserve_figures: Whether to preserve figures/formulas
         quality_loops: Number of refinement loops
         enable_rerank: Whether to enable candidate reranking
+        use_mineru: Whether to use MinerU for extraction (default True)
         progress: Optional progress callback
         
     Returns:
@@ -374,6 +376,8 @@ def translate_document(
             if "-" in pages:
                 start, end = pages.split("-")
                 page_list = list(range(int(start) - 1, int(end)))
+            elif "," in pages:
+                page_list = [int(p.strip()) - 1 for p in pages.split(",")]
             else:
                 page_list = [int(pages) - 1]
         except ValueError:
@@ -384,6 +388,7 @@ def translate_document(
         pages=page_list,
         source_lang=source_lang,
         target_lang=target_lang,
+        use_mineru=use_mineru,  # Use MinerU for better extraction
     )
     
     # Configure pipeline

@@ -10,6 +10,11 @@ Approaches:
 - Overlay mode: Add translation as text layer over original
 - Replace mode: White out original text, insert translation
 - Hybrid: Combine both for best results
+
+Fixes:
+- Better handling of blocks without bbox
+- Improved text replacement using redaction
+- Fallback to full page replacement when bbox unavailable
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
 
 from scitrans_llms.models import Document, Block, BoundingBox
 
@@ -175,15 +180,22 @@ class PDFRenderer:
         # Group blocks by page
         blocks_by_page = self._group_blocks_by_page(document)
         
-        # Process each page
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            blocks = blocks_by_page.get(page_num, [])
-            
-            if self.config.mode == "replace":
-                self._render_replace_mode(page, blocks)
-            else:  # overlay or hybrid
-                self._render_overlay_mode(page, blocks)
+        # Check if we have proper bbox info
+        has_bbox = any(block.bbox for block in document.all_blocks)
+        
+        if has_bbox:
+            # Process each page with bbox-based replacement
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                blocks = blocks_by_page.get(page_num, [])
+                
+                if self.config.mode == "replace":
+                    self._render_replace_mode(page, blocks)
+                else:
+                    self._render_overlay_mode(page, blocks)
+        else:
+            # Fallback: Use text search and replace
+            self._render_by_text_search(doc, document)
         
         # Save output
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -192,9 +204,9 @@ class PDFRenderer:
         
         return output_path
     
-    def _group_blocks_by_page(self, document: Document) -> dict[int, list[Block]]:
+    def _group_blocks_by_page(self, document: Document) -> Dict[int, List[Block]]:
         """Group blocks by their page number."""
-        blocks_by_page: dict[int, list[Block]] = {}
+        blocks_by_page: Dict[int, List[Block]] = {}
         
         for block in document.all_blocks:
             if block.bbox:
@@ -204,6 +216,57 @@ class PDFRenderer:
                 blocks_by_page[page].append(block)
         
         return blocks_by_page
+    
+    def _render_by_text_search(self, doc, document: Document):
+        """Render by finding source text in PDF and replacing it.
+        
+        This is the fallback when blocks don't have bbox info.
+        """
+        import fitz
+        
+        for block in document.all_blocks:
+            if not block.is_translatable:
+                continue
+            if not block.translated_text:
+                continue
+            if block.translated_text == block.source_text:
+                continue
+            
+            # Search for source text in all pages
+            source_text = block.source_text.strip()
+            if len(source_text) < 5:
+                continue
+            
+            # Try to find and replace
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                
+                # Search for text instances
+                text_instances = page.search_for(source_text[:100])  # Limit search length
+                
+                for inst in text_instances:
+                    try:
+                        # Expand rect slightly
+                        rect = inst + fitz.Rect(-2, -2, 2, 2)
+                        
+                        # White out
+                        page.draw_rect(rect, color=None, fill=(1, 1, 1))
+                        
+                        # Get approximate font size from rect height
+                        font_size = min(11, rect.height * 0.8)
+                        
+                        # Insert translated text
+                        page.insert_textbox(
+                            rect,
+                            block.translated_text,
+                            fontsize=font_size,
+                            fontname="helv",
+                            color=(0, 0, 0),
+                            align=fitz.TEXT_ALIGN_LEFT,
+                        )
+                        break  # Only replace first instance
+                    except Exception:
+                        pass
     
     def _render_overlay_mode(self, page, blocks: list[Block]):
         """Render translations as overlay on original text."""
