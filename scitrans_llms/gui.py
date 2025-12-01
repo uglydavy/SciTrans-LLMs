@@ -490,21 +490,38 @@ body.body--light .preview-fit { background:#e8e8e8; }
                     if not state.uploaded_pdf_path:
                         ui.notify('Upload a document first', type='warning')
                         return
-                    translate_btn.disable()
-                    download_btn.props('disabled')
-                    retranslate_btn.props('disabled')
-                    tweak_btn.props('disabled')
-                    prog_bar.value = 0
+                    try:
+                        translate_btn.disable()
+                        download_btn.props('disabled')
+                        retranslate_btn.props('disabled')
+                        tweak_btn.props('disabled')
+                        prog_bar.value = 0
+                        translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>')
+                    except RuntimeError as e:
+                        # Client disconnected, can't update UI
+                        if 'client' not in str(e).lower():
+                            raise
+                        return
+                    except Exception:
+                        pass
+                    
                     logs = []
                     
                     # Reset translated preview
                     state.translated_pdf_path = None
-                    translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">Translating...</div>')
                     
                     def log(m):
-                        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
-                        log_area.value = '\n'.join(logs[-6:])
-                        log_event(m)
+                        try:
+                            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
+                            log_area.value = '\n'.join(logs[-6:])
+                            log_event(m)
+                        except RuntimeError as e:
+                            # Client disconnected, ignore UI updates
+                            if 'client' not in str(e).lower():
+                                raise
+                        except Exception:
+                            # Ignore other UI update errors during translation
+                            pass
                     
                     try:
                         log("Starting translation...")
@@ -522,15 +539,43 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         log(f"Engine: {engine.value}, Direction: {current_direction['value']}")
                         
                         def cb(m):
-                            log(m)
-                            log_event(m)  # Also log to system logs for real-time updates
-                            if 'pars' in m.lower(): prog_bar.value = 0.2
-                            elif 'translat' in m.lower(): prog_bar.value = 0.5
-                            elif 'render' in m.lower(): prog_bar.value = 0.85
+                            try:
+                                log(m)
+                                log_event(m)  # Also log to system logs for real-time updates
+                                if 'pars' in m.lower(): 
+                                    try:
+                                        prog_bar.value = 0.2
+                                    except:
+                                        pass
+                                elif 'translat' in m.lower(): 
+                                    try:
+                                        prog_bar.value = 0.5
+                                    except:
+                                        pass
+                                elif 'render' in m.lower(): 
+                                    try:
+                                        prog_bar.value = 0.85
+                                    except:
+                                        pass
+                            except RuntimeError as e:
+                                # Client disconnected, ignore UI updates
+                                if 'client' not in str(e).lower():
+                                    raise
+                            except Exception:
+                                # Ignore UI update errors
+                                pass
                         
                         await asyncio.sleep(0.1)
-                        prog_bar.value = 0.25
-                        prog_text.text = "Translating..."
+                        try:
+                            prog_bar.value = 0.25
+                            prog_text.text = "Translating..."
+                        except RuntimeError as e:
+                            # Client disconnected
+                            if 'client' not in str(e).lower():
+                                raise
+                            return
+                        except Exception:
+                            pass
                         
                         # Run translation with reranking enabled
                         loop = asyncio.get_event_loop()
@@ -546,31 +591,58 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             progress=cb
                         ))
                         
-                        prog_bar.value = 1.0
+                        try:
+                            prog_bar.value = 1.0
+                        except:
+                            pass
+                        
                         if result.success:
-                            log("Translation complete")
-                            prog_text.text = "Complete"
-                            if out.exists():
-                                state.translated_pdf_path = str(out)
-                                download_btn.props(remove='disabled')
-                                retranslate_btn.props(remove='disabled')
-                                tweak_btn.props(remove='disabled')
-                                translated_preview_html.set_content(get_preview(str(out), 0))
-                                translated_page_num.value = 0
-                                update_translated_page_count()
-                            ui.notify('Translation complete', type='positive')
+                            try:
+                                log("Translation complete")
+                                prog_text.text = "Complete"
+                                if out.exists():
+                                    state.translated_pdf_path = str(out)
+                                    download_btn.props(remove='disabled')
+                                    retranslate_btn.props(remove='disabled')
+                                    tweak_btn.props(remove='disabled')
+                                    translated_preview_html.set_content(get_preview(str(out), 0))
+                                    translated_page_num.value = 0
+                                    update_translated_page_count()
+                                ui.notify('Translation complete', type='positive')
+                            except RuntimeError as e:
+                                # Client disconnected, just log the result
+                                if 'client' not in str(e).lower():
+                                    raise
+                                log_event("Translation complete (client disconnected)", "INFO")
+                            except Exception as ex:
+                                log_event(f"UI update error after translation: {ex}", "ERROR")
                         else:
-                            log(f"Errors: {result.errors[:2]}")
-                            prog_text.text = "Completed with errors"
+                            try:
+                                log(f"Errors: {result.errors[:2]}")
+                                prog_text.text = "Completed with errors"
+                            except:
+                                pass
                     except Exception as ex:
-                        log(f"Error: {ex}")
-                        prog_text.text = "Error"
-                        log_event(f"Translation error: {ex}", "ERROR")
-                        import traceback
-                        log_event(traceback.format_exc(), "ERROR")
-                        ui.notify(f'Translation failed: {str(ex)[:80]}', type='negative')
+                        try:
+                            log(f"Error: {ex}")
+                            prog_text.text = "Error"
+                            log_event(f"Translation error: {ex}", "ERROR")
+                            import traceback
+                            log_event(traceback.format_exc(), "ERROR")
+                            ui.notify(f'Translation failed: {str(ex)[:80]}', type='negative')
+                        except RuntimeError as e:
+                            # Client disconnected during error handling
+                            if 'client' not in str(e).lower():
+                                raise
+                            log_event(f"Translation error (client disconnected): {ex}", "ERROR")
+                        except Exception:
+                            # Ignore UI update errors
+                            pass
                     finally:
-                        translate_btn.enable()
+                        try:
+                            translate_btn.enable()
+                        except:
+                            pass
                 
                 translate_btn.on_click(do_translate)
                 download_btn.on_click(lambda: ui.download(state.translated_pdf_path) if state.translated_pdf_path else None)
