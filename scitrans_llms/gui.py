@@ -94,18 +94,19 @@ def launch(port: int = 7860, share: bool = False):
 html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!important; }
 .nicegui-content, .q-page-container { height:calc(100vh - 52px)!important; overflow:hidden!important; }
 .q-tab-panels, .q-tab-panel { height:100%!important; overflow:hidden!important; padding:0!important; }
-.main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:8px 16px; gap:16px; box-sizing:border-box; overflow:hidden; }
-.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; min-height:0; }
+.main-row { display:flex; width:100%; height:calc(100vh - 140px)!important; padding:8px 16px; gap:12px; box-sizing:border-box; overflow:hidden; }
+.panel { flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; min-height:0; }
 .panel::-webkit-scrollbar { width:6px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
-.card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:14px; }
-.card-title { font-weight:600; font-size:14px; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:8px; }
-.upload-zone-wrapper { position:relative; }
-.upload-zone-wrapper:hover { border-color:#6366f1!important; background:rgba(99,102,241,0.05)!important; }
-.upload-zone-wrapper .q-uploader { width:100%!important; border:none!important; background:transparent!important; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:12px; flex-shrink:0; }
+.card-title { font-weight:600; font-size:13px; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+.upload-zone-wrapper { position:relative; border:2px dashed var(--border); border-radius:6px; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:100px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.upload-zone-wrapper:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
+.upload-zone-wrapper .q-uploader { width:100%!important; height:100%!important; border:none!important; background:transparent!important; position:absolute!important; top:0!important; left:0!important; }
 .upload-zone-wrapper .q-uploader__input { position:absolute!important; top:0!important; left:0!important; width:100%!important; height:100%!important; opacity:0!important; cursor:pointer!important; z-index:10!important; }
 .upload-zone-wrapper .q-uploader__list { display:none!important; }
 .upload-zone-wrapper .q-btn { display:none!important; }
-.preview-fit { width:100%; height:calc(100% - 60px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
+.upload-zone-wrapper > *:not(.q-uploader) { position:relative; z-index:1; pointer-events:none; }
+.preview-fit { width:100%; height:calc(100% - 50px); display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:0; }
 .preview-fit img { max-width:100%; max-height:100%; object-fit:contain; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
 body.body--light .q-header { background:#4f46e5!important; }
@@ -148,10 +149,10 @@ body.body--light .preview-fit { background:#e8e8e8; }
                 with ui.element('div').classes('main-row'):
                     # LEFT PANEL
                     with ui.element('div').classes('panel'):
-                        # Source Document
+                        # Source Document with sliding tabs
                         with ui.element('div').classes('card'):
                             ui.label('Source Document').classes('card-title')
-                            upload_status = ui.label('No file selected').classes('text-sm opacity-70 mb-2')
+                            upload_status = ui.label('No file selected').classes('text-xs opacity-70 mb-2')
                             
                             # Upload handler function
                             async def handle_upload(e):
@@ -234,57 +235,65 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     log_event(traceback.format_exc(), "ERROR")
                                     ui.notify(f'Upload failed: {str(ex)[:80]}', type='negative')
                             
-                            # Upload component with drag & drop - make entire zone clickable
-                            with ui.element('div').classes('upload-zone-wrapper'):
-                                ui.label('📄 Drag & Drop PDF here').classes('text-sm font-medium mb-1')
-                                ui.label('or click anywhere to browse').classes('text-xs opacity-70')
-                                upload_comp = ui.upload(
-                                    on_upload=handle_upload,
-                                    auto_upload=True,
-                                    max_files=1
-                                ).props('accept=".pdf"').classes('w-full')
+                            # Sliding tabs for Upload/URL
+                            with ui.tabs().classes('w-full mb-2').style('min-height:32px;') as upload_tabs:
+                                upload_tab = ui.tab('Upload', icon='upload_file')
+                                url_tab = ui.tab('URL', icon='link')
                             
-                            ui.label('Or enter URL:').classes('text-xs mt-3 opacity-70')
-                            with ui.row().classes('w-full gap-2 items-center'):
-                                url_input = ui.input(placeholder='https://arxiv.org/pdf/...').classes('flex-grow')
+                            with ui.tab_panels(upload_tabs, value=upload_tab).classes('w-full'):
+                                # Upload tab
+                                with ui.tab_panel(upload_tab).classes('p-0'):
+                                    with ui.element('div').classes('upload-zone-wrapper'):
+                                        ui.label('📄 Drag & Drop PDF here').classes('text-xs font-medium mb-1')
+                                        ui.label('or click anywhere to browse').classes('text-xs opacity-70')
+                                        upload_comp = ui.upload(
+                                            on_upload=handle_upload,
+                                            auto_upload=True,
+                                            max_files=1
+                                        ).props('accept=".pdf"').classes('w-full')
                                 
-                                async def fetch_url():
-                                    url = url_input.value.strip()
-                                    if not url:
-                                        ui.notify('Enter a URL', type='warning')
-                                        return
-                                    upload_status.text = 'Fetching...'
-                                    try:
-                                        import urllib.request
-                                        log_event(f"Fetching: {url}")
-                                        tmp = Path(tempfile.mkdtemp())
-                                        fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
-                                        if not fname.endswith('.pdf'): fname += '.pdf'
-                                        fpath = tmp / fname
+                                # URL tab
+                                with ui.tab_panel(url_tab).classes('p-0'):
+                                    with ui.row().classes('w-full gap-2 items-center'):
+                                        url_input = ui.input(placeholder='https://arxiv.org/pdf/...').classes('flex-grow').props('dense')
                                         
-                                        loop = asyncio.get_event_loop()
-                                        await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
+                                        async def fetch_url():
+                                            url = url_input.value.strip()
+                                            if not url:
+                                                ui.notify('Enter a URL', type='warning')
+                                                return
+                                            upload_status.text = 'Fetching...'
+                                            try:
+                                                import urllib.request
+                                                log_event(f"Fetching: {url}")
+                                                tmp = Path(tempfile.mkdtemp())
+                                                fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
+                                                if not fname.endswith('.pdf'): fname += '.pdf'
+                                                fpath = tmp / fname
+                                                
+                                                loop = asyncio.get_event_loop()
+                                                await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
+                                                
+                                                state.uploaded_pdf_path = str(fpath)
+                                                state.uploaded_pdf_name = fname
+                                                upload_status.text = f'✓ Loaded: {fname}'
+                                                
+                                                # Reset translated preview
+                                                state.translated_pdf_path = None
+                                                translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
+                                                
+                                                preview_html.set_content(get_preview(str(fpath), 0), sanitize=False)
+                                                current_page_num.value = 0
+                                                update_page_count()
+                                                
+                                                log_event(f"Downloaded: {fname}")
+                                                ui.notify('PDF downloaded', type='positive')
+                                            except Exception as ex:
+                                                upload_status.text = 'Download failed'
+                                                log_event(f"URL error: {ex}", "ERROR")
+                                                ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
                                         
-                                        state.uploaded_pdf_path = str(fpath)
-                                        state.uploaded_pdf_name = fname
-                                        upload_status.text = f'✓ Loaded: {fname}'
-                                        
-                                        # Reset translated preview
-                                        state.translated_pdf_path = None
-                                        translated_preview_html.set_content('<div style="padding:40px;text-align:center;color:#888;">No translation yet</div>', sanitize=False)
-                                        
-                                        preview_html.set_content(get_preview(str(fpath), 0), sanitize=False)
-                                        current_page_num.value = 0
-                                        update_page_count()
-                                        
-                                        log_event(f"Downloaded: {fname}")
-                                        ui.notify('PDF downloaded', type='positive')
-                                    except Exception as ex:
-                                        upload_status.text = 'Download failed'
-                                        log_event(f"URL error: {ex}", "ERROR")
-                                        ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
-                                
-                                ui.button('Fetch', on_click=fetch_url).props('dense')
+                                        ui.button('Fetch', on_click=fetch_url, icon='download').props('dense size=sm')
                         
                         # Translation Settings
                         with ui.element('div').classes('card'):
@@ -292,8 +301,8 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             
                             # Direction as toggle buttons
                             with ui.row().classes('w-full gap-2 mb-2'):
-                                direction_en_fr = ui.button('EN → FR', on_click=lambda: set_direction('en-fr')).props('toggle')
-                                direction_fr_en = ui.button('FR → EN', on_click=lambda: set_direction('fr-en')).props('toggle')
+                                direction_en_fr = ui.button('EN → FR', on_click=lambda: set_direction('en-fr')).props('toggle size=sm')
+                                direction_fr_en = ui.button('FR → EN', on_click=lambda: set_direction('fr-en')).props('toggle size=sm')
                                 direction_en_fr.props('color=primary')
                                 current_direction = {'value': 'en-fr'}
                                 
@@ -306,7 +315,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     else:
                                         direction_fr_en.props('color=primary')
                             
-                            engine = ui.select(get_engines(), value=state.default_engine, label='Engine').classes('w-full')
+                            engine = ui.select(get_engines(), value=state.default_engine, label='Engine').classes('w-full').props('dense')
                             
                             # Pages selection: dropdown + input
                             with ui.row().classes('w-full gap-2'):
@@ -314,15 +323,15 @@ body.body--light .preview-fit { background:#e8e8e8; }
                                     {'all': 'All pages', **{str(i): f'Pages 1-{i}' for i in range(1, 21)}},
                                     value='all',
                                     label='Pages'
-                                ).classes('flex-grow')
+                                ).classes('flex-grow').props('dense')
                                 
-                                pages_custom = ui.input(placeholder='e.g., 1-5, 1,3,5', label='Custom').classes('w-32')
+                                pages_custom = ui.input(placeholder='e.g., 1-5, 1,3,5', label='Custom').classes('w-32').props('dense')
                             
                             quality = ui.select(
                                 {1: '1 pass', 2: '2 passes', 3: '3 passes', 4: '4 passes', 5: '5 passes'},
                                 value=state.quality_passes,
                                 label='Quality passes'
-                            ).classes('w-full')
+                            ).classes('w-full').props('dense')
                         
                         # Advanced Settings
                         with ui.element('div').classes('card'):
@@ -358,7 +367,7 @@ body.body--light .preview-fit { background:#e8e8e8; }
                             ui.upload(on_upload=handle_gloss, auto_upload=True).props('accept=".csv,.txt,.json" label="Upload glossary"').classes('w-full')
                         
                         # Translate Button
-                        translate_btn = ui.button('Translate Document').classes('w-full').props('color=primary size=lg')
+                        translate_btn = ui.button('Translate Document', icon='translate').classes('w-full').props('color=primary size=md')
                     
                     # RIGHT PANEL
                     with ui.element('div').classes('panel'):
@@ -465,9 +474,9 @@ body.body--light .preview-fit { background:#e8e8e8; }
                         with ui.element('div').classes('card'):
                             ui.label('Actions').classes('card-title')
                             with ui.row().classes('w-full gap-2'):
-                                download_btn = ui.button('Download', icon='download').classes('flex-1').props('color=positive size=lg disabled')
-                                retranslate_btn = ui.button('Retranslate', icon='refresh').classes('flex-1').props('outline size=lg disabled')
-                                tweak_btn = ui.button('Tweak Options', icon='tune').classes('flex-1').props('outline size=lg disabled')
+                                download_btn = ui.button('Download', icon='download').classes('flex-1').props('color=positive size=sm disabled')
+                                retranslate_btn = ui.button('Retranslate', icon='refresh').classes('flex-1').props('outline size=sm disabled')
+                                tweak_btn = ui.button('Tweak', icon='tune').classes('flex-1').props('outline size=sm disabled')
                 
                 # Translate logic
                 async def do_translate():
