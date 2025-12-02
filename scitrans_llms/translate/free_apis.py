@@ -152,10 +152,24 @@ class OllamaTranslator(Translator):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.api_url = f"{self.base_url}/api/generate"
+        self._connection_checked = False
     
     @property
     def name(self) -> str:
         return f"ollama-{self.model}"
+    
+    def _check_connection(self) -> bool:
+        """Check if Ollama is running."""
+        if self._connection_checked:
+            return True
+        
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            response.raise_for_status()
+            self._connection_checked = True
+            return True
+        except Exception:
+            return False
     
     def translate(
         self,
@@ -164,6 +178,18 @@ class OllamaTranslator(Translator):
         num_candidates: int = 1,
     ) -> TranslationResult:
         """Translate using Ollama."""
+        # Check connection first
+        if not self._check_connection():
+            return TranslationResult(
+                text=text,
+                source_text=text,
+                metadata={
+                    "translator": self.name,
+                    "error": "Ollama not running",
+                    "warning": f"Cannot connect to Ollama at {self.base_url}. Make sure Ollama is running: 'ollama serve'",
+                },
+            )
+        
         source_lang = context.source_lang if context else "English"
         target_lang = context.target_lang if context else "French"
         
@@ -190,7 +216,7 @@ Translation:"""
             response = requests.post(
                 self.api_url,
                 json=payload,
-                timeout=120,  # Ollama can be slow
+                timeout=300,  # Increased timeout for complex translations
             )
             response.raise_for_status()
             
@@ -210,14 +236,30 @@ Translation:"""
                     "api_used": "ollama",
                 },
             )
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.Timeout:
             return TranslationResult(
                 text=text,
                 source_text=text,
                 metadata={
                     "translator": self.name,
-                    "error": str(e),
-                    "warning": "Translation failed, returning original text. Make sure Ollama is running.",
+                    "error": "Timeout",
+                    "warning": f"Ollama timeout after 300s. The model '{self.model}' may be too slow or the text too long. Try a faster model like 'llama3.2'.",
+                },
+            )
+        except requests.exceptions.RequestException as e:
+            error_msg = str(e)
+            if "Connection" in error_msg or "connection" in error_msg:
+                warning = f"Cannot connect to Ollama at {self.base_url}. Start Ollama with: 'ollama serve'"
+            else:
+                warning = f"Ollama error: {error_msg}. Make sure model '{self.model}' is installed: 'ollama pull {self.model}'"
+            
+            return TranslationResult(
+                text=text,
+                source_text=text,
+                metadata={
+                    "translator": self.name,
+                    "error": error_msg,
+                    "warning": warning,
                 },
             )
 

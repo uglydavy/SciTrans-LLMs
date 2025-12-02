@@ -58,11 +58,12 @@ def launch(port: int = 7860, share: bool = False):
             import fitz
             doc = fitz.open(path)
             if page_num < len(doc):
-                # Use moderate resolution to fit in preview area
-                pix = doc[page_num].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                # Use 2x zoom for better quality, CSS will constrain size
+                pix = doc[page_num].get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
                 b64 = base64.b64encode(pix.tobytes("png")).decode()
                 doc.close()
-                return f'<img src="data:image/png;base64,{b64}" style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;"/>'
+                # Inline style ensures image fits in container
+                return f'<img src="data:image/png;base64,{b64}" style="max-width:100%;max-height:calc(100vh - 450px);width:auto;height:auto;object-fit:contain;display:block;margin:auto;"/>'
             doc.close()
         except Exception as ex:
             log_event(f"Preview error: {ex}", "ERROR")
@@ -109,7 +110,7 @@ html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!import
   display:flex; 
   align-items:center; 
   justify-content:center; 
-  overflow:hidden;  /* Hide overflow, let image scale */
+  overflow:auto;  /* Allow scrolling if needed */
   background:#1a1a2e; 
   min-height:300px; 
   max-height:calc(100vh - 380px);  /* Leave room for controls + nav */
@@ -117,12 +118,13 @@ html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!import
   position:relative;
 }
 .preview-area img { 
-  max-width:100%!important; 
-  max-height:100%!important; 
+  max-width:95%!important; 
+  max-height:95%!important; 
   width:auto!important;
   height:auto!important;
   object-fit:contain!important; 
   display:block;
+  margin:auto;
 }
 .action-row { display:flex; gap:4px; margin-top:4px; }
 .action-row .q-btn { flex:1; font-size:10px!important; padding:4px 8px!important; }
