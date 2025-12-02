@@ -76,7 +76,7 @@ class TestDisplayMathMasking:
         masked = mask_text(text, registry)
         
         assert "$$E = mc^2$$" not in masked
-        assert "MATH_" in masked
+        assert "MATHDISP_" in masked
         
     def test_bracket_equation(self):
         """Test masking of \\[ \\] display equation."""
@@ -85,7 +85,7 @@ class TestDisplayMathMasking:
         masked = mask_text(text, registry)
         
         assert "\\[x^2" not in masked
-        assert "MATH_" in masked
+        assert "MATHDISP_" in masked
         
     def test_equation_environment(self):
         """Test masking of equation environment."""
@@ -99,7 +99,7 @@ class TestDisplayMathMasking:
         masked = mask_text(text, registry)
         
         assert "\\begin{equation}" not in masked
-        assert "MATH_" in masked
+        assert "MATHENV_" in masked
         
     def test_align_environment(self):
         """Test masking of align environment."""
@@ -113,7 +113,7 @@ class TestDisplayMathMasking:
         masked = mask_text(text, registry)
         
         assert "\\begin{align}" not in masked
-        assert "MATH_" in masked
+        assert "MATHENV_" in masked
 
 
 class TestURLMasking:
@@ -256,43 +256,40 @@ class TestPlaceholderPreservation:
     
     def test_validate_all_placeholders_present(self):
         """Test validation passes when all placeholders present."""
-        original = "Text with MATH_0 and URL_1 placeholders"
-        translated = "Texte avec MATH_0 et URL_1 espaces réservés"
-        registry = MaskRegistry()
-        registry.mappings = {"MATH_0": "$x$", "URL_1": "http://example.com"}
+        original = "Text with <<MATH_000>> and <<URL_000>> placeholders"
+        translated = "Texte avec <<MATH_000>> et <<URL_000>> espaces réservés"
         
-        # Should not raise
-        validate_placeholders(original, translated, registry)
+        # Should return empty list (no missing placeholders)
+        missing = validate_placeholders(original, translated)
+        assert len(missing) == 0
         
     def test_validate_missing_placeholder(self):
-        """Test validation fails when placeholder missing."""
-        original = "Text with MATH_0 placeholder"
-        translated = "Texte sans espace réservé"  # Missing MATH_0
-        registry = MaskRegistry()
-        registry.mappings = {"MATH_0": "$x$"}
+        """Test validation detects when placeholder missing."""
+        original = "Text with <<MATH_000>> placeholder"
+        translated = "Texte sans espace réservé"  # Missing <<MATH_000>>
         
-        with pytest.raises(ValueError):
-            validate_placeholders(original, translated, registry)
+        # Should return list with missing placeholder
+        missing = validate_placeholders(original, translated)
+        assert len(missing) == 1
+        assert "<<MATH_000>>" in missing
             
     def test_validate_extra_placeholder(self):
         """Test validation when extra placeholder added."""
-        original = "Text with MATH_0"
-        translated = "Texte avec MATH_0 et MATH_1"  # Extra MATH_1
-        registry = MaskRegistry()
-        registry.mappings = {"MATH_0": "$x$"}
+        original = "Text with <<MATH_000>>"
+        translated = "Texte avec <<MATH_000>> et <<MATH_001>>"  # Extra placeholder
         
-        # Should not raise - extra placeholders are okay
-        validate_placeholders(original, translated, registry)
+        # Should not report missing (extra is okay)
+        missing = validate_placeholders(original, translated)
+        assert len(missing) == 0
         
     def test_placeholder_order_independent(self):
         """Test validation is order-independent."""
-        original = "Text with MATH_0 and URL_1"
-        translated = "Texte avec URL_1 et MATH_0"  # Different order
-        registry = MaskRegistry()
-        registry.mappings = {"MATH_0": "$x$", "URL_1": "http://example.com"}
+        original = "Text with <<MATH_000>> and <<URL_000>>"
+        translated = "Texte avec <<URL_000>> et <<MATH_000>>"  # Different order
         
-        # Should not raise
-        validate_placeholders(original, translated, registry)
+        # Should not report missing
+        missing = validate_placeholders(original, translated)
+        assert len(missing) == 0
 
 
 class TestDocumentMasking:
@@ -302,15 +299,15 @@ class TestDocumentMasking:
         """Test masking a simple document."""
         doc = Document.from_text(
             "The equation $E=mc^2$ is fundamental.",
-            source_language="en"
+            source_lang="en"
         )
-        config = MaskConfig(enabled=True)
+        config = MaskConfig()
         
-        masked_doc, registry = mask_document(doc, config)
+        registry = mask_document(doc, config)
         
         assert len(registry.mappings) > 0
         # Check that source text is masked
-        for block in masked_doc.all_blocks:
+        for block in doc.all_blocks:
             if block.is_translatable and "$" in block.source_text:
                 # Original has equation, masked should not
                 assert "$E=mc^2$" not in block.masked_text
@@ -319,21 +316,21 @@ class TestDocumentMasking:
         """Test unmasking a simple document."""
         doc = Document.from_text(
             "The equation $E=mc^2$ is fundamental.",
-            source_language="en"
+            source_lang="en"
         )
-        config = MaskConfig(enabled=True)
+        config = MaskConfig()
         
-        masked_doc, registry = mask_document(doc, config)
+        registry = mask_document(doc, config)
         
         # Simulate translation
-        for block in masked_doc.all_blocks:
+        for block in doc.all_blocks:
             if block.is_translatable:
                 block.translated_text = block.masked_text  # Keep placeholders
         
-        unmasked_doc = unmask_document(masked_doc, registry)
+        unmask_document(doc, registry)
         
         # Should restore equations in translated text
-        for block in unmasked_doc.all_blocks:
+        for block in doc.all_blocks:
             if block.is_translatable and block.translated_text:
                 assert "MATH_" not in block.translated_text
                 
@@ -344,10 +341,10 @@ class TestDocumentMasking:
             "Second paragraph with $y=2$.",
             "Third at https://example.com"
         ]
-        doc = Document.from_paragraphs(paragraphs, source_language="en")
-        config = MaskConfig(enabled=True)
+        doc = Document.from_paragraphs(paragraphs, source_lang="en")
+        config = MaskConfig()
         
-        masked_doc, registry = mask_document(doc, config)
+        registry = mask_document(doc, config)
         
         assert len(registry.mappings) >= 3  # At least 2 math + 1 URL
         
@@ -355,17 +352,23 @@ class TestDocumentMasking:
         """Test that masking can be disabled."""
         doc = Document.from_text(
             "The equation $E=mc^2$ is fundamental.",
-            source_language="en"
+            source_lang="en"
         )
-        config = MaskConfig(enabled=False)
+        config = MaskConfig(
+            mask_latex_inline=False,
+            mask_latex_display=False,
+            mask_urls=False,
+            mask_code_blocks=False,
+            mask_inline_code=False
+        )
         
-        masked_doc, registry = mask_document(doc, config)
+        registry = mask_document(doc, config)
         
         # No masks should be created
         assert len(registry.mappings) == 0
-        # Text should be unchanged
-        for orig_block, masked_block in zip(doc.all_blocks, masked_doc.all_blocks):
-            assert orig_block.source_text == masked_block.masked_text
+        # Masked text should be same as source
+        for block in doc.all_blocks:
+            assert block.source_text == block.masked_text
 
 
 class TestMaskRegistry:
@@ -396,9 +399,9 @@ class TestMaskRegistry:
         text = "Formula $E=mc^2$"
         masked = mask_text(text, registry)
         
-        # Get the mask key from masked text
+        # Get the mask key from masked text (format: <<MATH_000>>)
         import re
-        match = re.search(r'MATH_\d+', masked)
+        match = re.search(r'<<MATH_\d{3}>>', masked)
         assert match
         key = match.group(0)
         
@@ -412,16 +415,17 @@ class TestMaskConfig:
     def test_default_config(self):
         """Test default MaskConfig settings."""
         config = MaskConfig()
-        assert config.enabled is True
+        assert config.mask_latex_inline is True
+        assert config.mask_urls is True
         
     def test_custom_config(self):
         """Test custom MaskConfig settings."""
         config = MaskConfig(
-            enabled=True,
-            preserve_structure=True
+            mask_latex_inline=True,
+            preserve_section_numbers=True
         )
-        assert config.enabled is True
-        assert config.preserve_structure is True
+        assert config.mask_latex_inline is True
+        assert config.preserve_section_numbers is True
 
 
 class TestEdgeCases:
@@ -503,25 +507,25 @@ class TestRoundTripConsistency:
             "URL https://example.com there.",
             "Code `print()` everywhere."
         ]
-        doc = Document.from_paragraphs(paragraphs, source_language="en")
-        config = MaskConfig(enabled=True)
+        doc = Document.from_paragraphs(paragraphs, source_lang="en")
+        config = MaskConfig()
         
-        masked_doc, registry = mask_document(doc, config)
+        registry = mask_document(doc, config)
         
         # Simulate translation that preserves placeholders
-        for block in masked_doc.all_blocks:
+        for block in doc.all_blocks:
             if block.is_translatable:
                 block.translated_text = block.masked_text
         
-        unmasked_doc = unmask_document(masked_doc, registry)
+        unmask_document(doc, registry)
         
         # Check that original content is restored
-        for orig_block, unmasked_block in zip(doc.all_blocks, unmasked_doc.all_blocks):
-            if orig_block.is_translatable:
+        for block in doc.all_blocks:
+            if block.is_translatable and block.translated_text:
                 # Translated text should have masks replaced
-                assert "MATH_" not in unmasked_block.translated_text
-                assert "URL_" not in unmasked_block.translated_text
-                assert "CODE_" not in unmasked_block.translated_text
+                assert "<<MATH_" not in block.translated_text
+                assert "<<URL_" not in block.translated_text
+                assert "<<CODE_" not in block.translated_text
 
 
 if __name__ == "__main__":
