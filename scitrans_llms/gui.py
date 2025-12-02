@@ -44,7 +44,7 @@ def launch(port: int = 7860, share: bool = False):
     state = State()
     
     def get_engines():
-        e = ['free', 'dictionary', 'dummy', 'improved-offline', 'huggingface', 'ollama']
+        e = ['free', 'dictionary', 'improved-offline', 'huggingface', 'ollama']
         if km.get_key('openai'): e.append('openai')
         if km.get_key('deepseek'): e.append('deepseek')
         if km.get_key('anthropic'): e.append('anthropic')
@@ -331,6 +331,11 @@ body.body--light .preview-area { background:#e8e8e8; }
                                 value=state.quality_passes,
                                 label='Quality passes'
                             ).classes('w-full').props('dense')
+                            candidates = ui.select(
+                                {1: '1 candidate', 3: '3 candidates', 5: '5 candidates'},
+                                value=3,
+                                label='Candidates per block'
+                            ).classes('w-full mt-1').props('dense')
                         
                         # Advanced Settings
                         with ui.element('div').classes('card'):
@@ -340,6 +345,7 @@ body.body--light .preview-area { background:#e8e8e8; }
                                 structure_chk = ui.checkbox('Preserve numbering', value=state.preserve_structure).props('dense')
                                 tables_chk = ui.checkbox('Preserve tables', value=state.translate_tables).props('dense')
                                 figures_chk = ui.checkbox('Preserve figures', value=state.translate_figures).props('dense')
+                                prompt_preview_chk = ui.checkbox('Show LLM prompt for first block', value=False).props('dense')
                                 ui.number(label='Context window', value=state.context_window, min=1, max=20).classes('w-full mt-1').props('dense')
                         
                         # Glossary
@@ -547,6 +553,7 @@ body.body--light .preview-area { background:#e8e8e8; }
                             quality_loops=int(quality.value),
                             enable_rerank=True,
                             use_mineru=True,
+                            num_candidates=int(candidates.value),
                             progress=cb
                         ))
                         
@@ -557,6 +564,32 @@ body.body--light .preview-area { background:#e8e8e8; }
                         
                         if result.success:
                             try:
+                                # Log basic quality-related stats
+                                stats = result.stats or {}
+                                total_blocks = stats.get('total_blocks', 0)
+                                translated_blocks = stats.get('translated_blocks', 0)
+                                refined_blocks = stats.get('refined_blocks', 0)
+                                masks_applied = stats.get('masks_applied', 0)
+                                log(f"Stats: {translated_blocks}/{total_blocks} blocks translated, {refined_blocks} refined, {masks_applied} masks applied")
+
+                                # Optionally surface the LLM prompts for the first translated block
+                                if prompt_preview_chk.value:
+                                    meta = stats.get('first_translation_metadata') or {}
+                                    sys_prompt = meta.get('system_prompt')
+                                    user_prompt = meta.get('user_prompt')
+                                    if sys_prompt:
+                                        snippet = sys_prompt[:1200]
+                                        if len(sys_prompt) > 1200:
+                                            snippet += ' ...[truncated]'
+                                        log('=== LLM system prompt (first block) ===')
+                                        log(snippet)
+                                    if user_prompt:
+                                        snippet_u = user_prompt[:800]
+                                        if len(user_prompt) > 800:
+                                            snippet_u += ' ...[truncated]'
+                                        log('=== LLM user prompt (first block) ===')
+                                        log(snippet_u)
+
                                 log("Translation complete")
                                 prog_text.text = "Complete"
                                 if out.exists():

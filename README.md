@@ -167,8 +167,7 @@ Translated Document
 
 ### Free Backends
 - **`free`** - Cascading translator (Lingva → LibreTranslate → MyMemory)
-- **`dictionary`** - Offline with 1000+ words
-- **`dummy`** - Testing only
+- **`dictionary`** - Offline with 1000+ words (can be enhanced from corpora via `scitrans corpus build-dict`)
 
 ### Paid Backends
 - **`deepseek`** - Best value ($0.001/1K tokens)

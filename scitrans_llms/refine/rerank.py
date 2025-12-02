@@ -24,6 +24,25 @@ from scitrans_llms.translate.base import Translator, TranslationContext, Transla
 from scitrans_llms.translate.glossary import Glossary
 
 
+# Default weight configurations for combining sub-scores.
+# When LLM scoring is available we rely more on adequacy and
+# placeholder preservation; without LLM we lean even more heavily
+# on placeholders and glossary adherence.
+DEFAULT_LLM_WEIGHTS: dict[str, float] = {
+    "fluency": 0.10,
+    "adequacy": 0.35,
+    "terminology": 0.25,
+    "placeholder_preservation": 0.30,
+}
+
+DEFAULT_HEURISTIC_WEIGHTS: dict[str, float] = {
+    "fluency": 0.10,
+    "adequacy": 0.25,
+    "terminology": 0.30,
+    "placeholder_preservation": 0.35,
+}
+
+
 @dataclass
 class CandidateScore:
     """Score for a translation candidate."""
@@ -36,12 +55,8 @@ class CandidateScore:
     
     def compute_overall(self, weights: dict[str, float] = None):
         """Compute weighted overall score."""
-        weights = weights or {
-            "fluency": 0.25,
-            "adequacy": 0.35,
-            "terminology": 0.25,
-            "placeholder_preservation": 0.15,
-        }
+        # Default to LLM-tuned weights if none are provided
+        weights = weights or DEFAULT_LLM_WEIGHTS
         self.overall = (
             self.fluency * weights["fluency"] +
             self.adequacy * weights["adequacy"] +
@@ -134,12 +149,15 @@ class CandidateReranker:
             scores.append(score)
         
         # LLM-based comparison if enabled
+        used_llm = False
         if self.use_llm_scoring and self._get_client():
             self._add_llm_scores(source_text, candidates, scores, context)
+            used_llm = True
         
-        # Compute overall scores
+        # Compute overall scores with tighter weights
+        weight_cfg = DEFAULT_LLM_WEIGHTS if used_llm else DEFAULT_HEURISTIC_WEIGHTS
         for score in scores:
-            score.compute_overall()
+            score.compute_overall(weight_cfg)
         
         # Select best
         best_idx = max(range(len(scores)), key=lambda i: scores[i].overall)
@@ -150,7 +168,7 @@ class CandidateReranker:
             scores=scores,
             metadata={
                 "best_index": best_idx,
-                "used_llm": self.use_llm_scoring,
+                "used_llm": used_llm,
             },
         )
     

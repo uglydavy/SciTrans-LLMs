@@ -184,14 +184,14 @@ scitrans info
 ```
 
 You should see:
-- ✓ Available backends (at least dummy and dictionary)
+- ✓ Available backends (at least free and dictionary)
 - ✓ or ✗ for optional dependencies (PyMuPDF, SacreBLEU, etc.)
 - API key status
 
 ### Run Demo
 
 ```bash
-# Quick test with dummy translator
+# Quick test with offline dictionary translator
 scitrans demo
 ```
 

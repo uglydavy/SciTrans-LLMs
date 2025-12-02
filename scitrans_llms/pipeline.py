@@ -147,9 +147,13 @@ class TranslationPipeline:
     def _init_components(self) -> None:
         """Initialize pipeline components based on config."""
         # Translator
+        translator_kwargs = dict(self.config.translator_kwargs)
+        # Always pass language pair to backends that care (e.g., dictionary)
+        translator_kwargs.setdefault("source_lang", self.config.source_lang)
+        translator_kwargs.setdefault("target_lang", self.config.target_lang)
         base_translator = create_translator(
             backend=self.config.translator_backend,
-            **self.config.translator_kwargs,
+            **translator_kwargs,
         )
         
         # Wrap with reranking if num_candidates > 1
@@ -199,6 +203,7 @@ class TranslationPipeline:
             "skipped_blocks": 0,
             "refined_blocks": 0,
         }
+        first_translation_metadata: dict | None = None
         
         # Step 1: Masking
         self.progress_callback("Applying masks...", 0.1)
@@ -246,6 +251,13 @@ class TranslationPipeline:
                 # Use translate() directly to get candidates
                 text_to_translate = block.masked_text if block.masked_text else block.source_text
                 result = self.translator.translate(text_to_translate, context, num_candidates=num_cands)
+
+                # Capture metadata for the very first translation (for GUI prompt inspection)
+                if first_translation_metadata is None:
+                    try:
+                        first_translation_metadata = dict(result.metadata or {})
+                    except Exception:
+                        first_translation_metadata = {}
                 
                 # If we have multiple candidates, use reranking
                 if num_cands > 1 and (result.candidates or num_cands > 1):
@@ -311,6 +323,10 @@ class TranslationPipeline:
         
         self.progress_callback("Complete!", 1.0)
         
+        # Expose metadata from the first translation call (if any) for tooling/GUI
+        if first_translation_metadata:
+            stats["first_translation_metadata"] = first_translation_metadata
+        
         return PipelineResult(
             document=document,
             config=self.config,
@@ -374,6 +390,7 @@ def translate_document(
     quality_loops: int = 3,
     enable_rerank: bool = True,
     use_mineru: bool = True,  # MinerU enforced by default
+    num_candidates: int | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """Translate a PDF document and save the result.
@@ -437,13 +454,18 @@ def translate_document(
     
     # Configure pipeline
     prog("Translating blocks...", 0.3)
+    # Determine candidate count for reranking
+    if num_candidates is not None:
+        candidates_per_block = max(1, num_candidates)
+    else:
+        candidates_per_block = 3 if enable_rerank else 1
     config = PipelineConfig(
         source_lang=source_lang,
         target_lang=target_lang,
         translator_backend=engine,
         enable_glossary=True,
         enable_refinement=quality_loops > 0,
-        num_candidates=3 if enable_rerank else 1,  # Enable reranking by generating multiple candidates
+        num_candidates=candidates_per_block,  # Enable reranking by generating multiple candidates
     )
     
     pipeline = TranslationPipeline(config, progress_callback=prog)

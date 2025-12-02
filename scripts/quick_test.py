@@ -23,7 +23,7 @@ from rich.panel import Panel
 console = Console()
 
 
-def run_quick_test(backend: str = "dummy"):
+def run_quick_test(backend: str = "dictionary"):
     """Run a quick end-to-end test."""
     
     console.print(Panel.fit(
@@ -127,7 +127,7 @@ Deep learning enables state of the art performance on machine translation tasks.
 
 def main():
     parser = argparse.ArgumentParser(description="Quick test for SciTrans-LLMs")
-    parser.add_argument("--backend", "-b", type=str, default="dummy",
+    parser.add_argument("--backend", "-b", type=str, default="dictionary",
                        help="Translation backend to test")
     
     args = parser.parse_args()

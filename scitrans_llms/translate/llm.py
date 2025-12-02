@@ -222,6 +222,8 @@ class OpenAITranslator(BaseLLMTranslator):
                 "translator": self.name,
                 "model": self.config.model,
                 "num_candidates": len(translations),
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
             },
         )
 
@@ -309,6 +311,8 @@ class DeepSeekTranslator(BaseLLMTranslator):
             metadata={
                 "translator": self.name,
                 "model": self.config.model,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
             },
         )
 
@@ -552,6 +556,8 @@ class PerplexityTranslator(BaseLLMTranslator):
             metadata={
                 "translator": self.name,
                 "model": self.config.model,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
             },
         )
 

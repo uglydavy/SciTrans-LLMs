@@ -229,13 +229,13 @@ class DictionaryTranslator(Translator):
     This translator:
     1. Applies glossary term replacements (priority)
     2. Uses a built-in dictionary of common English→French words
-    3. Leaves truly unknown words unchanged
+    3. Optionally augments that dictionary from a local corpus-trained lexicon
+    4. Leaves truly unknown words unchanged
     
-    Useful as:
-    - A fallback when API-based translators fail
-    - A baseline for ablation studies
-    - Offline translation capability
-    - Testing glossary coverage
+    The corpus-trained lexicon is **local-only** and loaded from
+        ~/.scitrans/dictionaries/{source_lang}_{target_lang}.tsv
+    if present. This file can be created via `scitrans corpus build-dict`.
+    No downloads or network calls are triggered here.
     """
     
     # Extended built-in dictionary for common academic/scientific terms
@@ -304,8 +304,45 @@ class DictionaryTranslator(Translator):
         'what': 'quoi', 'which': 'lequel', 'who': 'qui',
     }
     
-    def __init__(self, glossary: Glossary | None = None):
+    def __init__(self, glossary: Glossary | None = None, source_lang: str = "en", target_lang: str = "fr"):
         self.glossary = glossary
+        # Optional extra dictionary trained from parallel corpora.
+        # This is loaded lazily from ~/.scitrans/dictionaries/{src}_{tgt}.tsv if present
+        # and never triggers any downloads by itself.
+        self.extra_dict: dict[str, str] = self._load_corpus_dictionary(source_lang, target_lang)
+
+    def _load_corpus_dictionary(self, source_lang: str, target_lang: str) -> dict[str, str]:
+        """Load an optional extra dictionary built from parallel corpora.
+
+        This never downloads anything. It only looks for a local TSV file at:
+            ~/.scitrans/dictionaries/{source_lang}_{target_lang}.tsv
+
+        Each line should be: source<TAB>target
+        """
+        try:
+            from pathlib import Path
+            import os
+
+            root = Path(os.path.expanduser("~")) / ".scitrans" / "dictionaries"
+            path = root / f"{source_lang}_{target_lang}.tsv"
+            if not path.exists():
+                return {}
+
+            extra: dict[str, str] = {}
+            with path.open("r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    parts = line.rstrip("\n").split("\t")
+                    if len(parts) >= 2:
+                        src = parts[0].strip().lower()
+                        tgt = parts[1].strip()
+                        if src and tgt:
+                            # Prefer shortest target if duplicates
+                            if src not in extra or len(tgt) < len(extra[src]):
+                                extra[src] = tgt
+            return extra
+        except Exception:
+            # Never let dictionary loading break translation
+            return {}
     
     @property
     def name(self) -> str:
@@ -346,19 +383,25 @@ class DictionaryTranslator(Translator):
                     result = pattern.sub(replace_with_case, result)
                     terms_used.append(entry.source)
         
-        # Step 2: Apply built-in dictionary for remaining words
+        # Step 2: Apply corpus-based dictionary first, then built-in dictionary
         def replace_word(match):
             word = match.group(0)
             lower_word = word.lower()
-            if lower_word in self.BASIC_DICT:
+
+            translated: str | None = None
+            if lower_word in self.extra_dict:
+                translated = self.extra_dict[lower_word]
+            elif lower_word in self.BASIC_DICT:
                 translated = self.BASIC_DICT[lower_word]
-                # Preserve case
-                if word[0].isupper():
-                    translated = translated[0].upper() + translated[1:]
-                if word.isupper():
-                    translated = translated.upper()
-                return translated
-            return word
+            else:
+                return word
+
+            # Preserve case
+            if word[0].isupper():
+                translated = translated[0].upper() + translated[1:]
+            if word.isupper():
+                translated = translated.upper()
+            return translated
         
         # Only replace whole words
         result = re.sub(r'\b[a-zA-Z]+\b', replace_word, result)
@@ -369,7 +412,8 @@ class DictionaryTranslator(Translator):
             metadata={
                 "translator": self.name,
                 "glossary_terms": len(terms_used),
-                "method": "glossary+dictionary"
+                "method": "glossary+dictionary",
+                "extra_dict_size": len(self.extra_dict),
             },
             glossary_terms_used=terms_used,
         )
@@ -393,7 +437,9 @@ def create_translator(backend: str, **kwargs) -> Translator:
     
     elif backend_lower in ("dictionary", "offline", "glossary"):
         glossary = kwargs.get("glossary")
-        return DictionaryTranslator(glossary=glossary)
+        src = kwargs.get("source_lang", "en")
+        tgt = kwargs.get("target_lang", "fr")
+        return DictionaryTranslator(glossary=glossary, source_lang=src, target_lang=tgt)
     
     elif backend_lower in ("openai", "gpt", "gpt4", "gpt-4", "gpt5", "gpt-5", "gpt-5.1"):
         from scitrans_llms.translate.llm import OpenAITranslator, LLMConfig

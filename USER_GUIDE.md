@@ -35,17 +35,10 @@ scitrans translate --input paper.pdf --backend free
 
 - **Quality**: ⭐⭐⭐ (Good)
 - **Offline**: Yes (after first download)
-- **Words**: 1000+ automatically loaded
+- **Words**: 1000+ automatically loaded; can be further improved from corpora via `scitrans corpus build-dict`
 
 ```bash
 scitrans translate --input paper.pdf --backend dictionary
-```
-
-#### `dummy` - Testing Only
-**Good for**: Pipeline testing, no actual translation
-
-```bash
-scitrans translate --input paper.pdf --backend dummy
 ```
 
 ### 💰 Paid Options (Best Quality)
@@ -262,8 +255,6 @@ scitrans translate \
 ### Q: Can I use this commercially?
 **A:** Free backends have usage limits. For commercial use, we recommend paid backends like `deepseek`.
 
-### Q: Why keep `dummy` backend?
-**A:** It's useful for testing the pipeline without making any translations or API calls.
 
 ## Troubleshooting
 

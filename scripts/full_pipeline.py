@@ -88,7 +88,7 @@ def validate_setup():
     km = KeyManager()
     
     console.print("\n  [bold]API Keys:[/]")
-    available_backends = ["dummy", "dictionary"]
+    available_backends = ["dictionary", "free"]
     
     for service in ["openai", "deepseek", "anthropic"]:
         info = km.get_key_info(service)

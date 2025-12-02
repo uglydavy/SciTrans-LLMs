@@ -81,8 +81,8 @@ def translate(
         help="Target language code",
     ),
     backend: str = typer.Option(
-        "dummy", "--backend", "-b",
-        help="Translation backend (free ⭐, dummy, dictionary, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama)",
+        "free", "--backend", "-b",
+        help="Translation backend (free ⭐, dictionary, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama)",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
@@ -397,7 +397,7 @@ def ablation(
         help="Output file for results",
     ),
     backends: str = typer.Option(
-        "dummy", "--backends", "-b",
+        "dictionary", "--backends", "-b",
         help="Comma-separated list of backends to test",
     ),
 ):
@@ -482,7 +482,7 @@ For more information, see https://arxiv.org/abs/1706.03762.
     
     # Configure and run pipeline
     config = PipelineConfig(
-        translator_backend="dummy",
+        translator_backend="dictionary",
         enable_glossary=True,
         enable_refinement=True,
     )
@@ -515,8 +515,7 @@ def info():
     table.add_column("Notes")
     
     # Always available
-    table.add_row("dummy", "✓ Available", "For testing")
-    table.add_row("dictionary", "✓ Available", "Glossary-only translation")
+    table.add_row("dictionary", "✓ Available", "Offline glossary/dictionary translation")
     
     # Check OpenAI
     try:
@@ -833,15 +832,23 @@ def corpus(
             for src, tgt in list(dictionary.items())[:5]:
                 console.print(f"  {src[:50]} → {tgt[:50]}")
             
-            # Save if output specified
-            if output:
-                import csv
-                with open(output, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(['source', 'target'])
-                    for src, tgt in dictionary.items():
-                        writer.writerow([src, tgt])
-                console.print(f"\n[green]Saved to:[/] {output}")
+            # Save dictionary
+            import csv, os
+            if output is None:
+                # Default location discovered automatically by DictionaryTranslator
+                default_root = Path(os.path.expanduser("~")) / ".scitrans" / "dictionaries"
+                default_root.mkdir(parents=True, exist_ok=True)
+                output_path = default_root / f"{name}_{source_lang}_{target_lang}.tsv"
+            else:
+                output_path = output
+            
+            # Write as TSV: source<TAB>target (preferred by DictionaryTranslator)
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f, delimiter='\t')
+                for src, tgt in dictionary.items():
+                    writer.writerow([src, tgt])
+            console.print(f"\n[green]Saved to:[/] {output_path}")
+            console.print("[dim]Dictionary will be auto-loaded by the 'dictionary' backend when matching languages are used.[/]")
             
         except Exception as e:
             console.print(f"[red]Error:[/] {e}")

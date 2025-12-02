@@ -90,7 +90,7 @@ python3 scripts/quick_test.py
 
 ### Full Thesis Pipeline
 ```bash
-# With sample data + dummy translator (free, for testing)
+# With sample data + dictionary translator (free, offline-friendly)
 python3 scripts/full_pipeline.py
 
 # With OpenAI (recommended for thesis)
@@ -109,7 +109,7 @@ python3 scripts/full_pipeline.py --skip-baselines
 python3 scripts/full_pipeline.py --corpus /path/to/your/corpus
 
 # Compare multiple backends
-python3 scripts/run_experiments.py --compare-backends dummy dictionary openai
+python3 scripts/run_experiments.py --compare-backends dictionary openai deepseek
 ```
 
 ## Step 4: Review Results

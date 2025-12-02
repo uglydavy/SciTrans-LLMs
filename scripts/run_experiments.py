@@ -91,7 +91,7 @@ def load_corpus(corpus_path: Path, quick: bool = False):
     return corpus
 
 
-def run_ablation_experiments(corpus, backend: str = "dummy"):
+def run_ablation_experiments(corpus, backend: str = "dictionary"):
     """Run ablation study experiments."""
     console.print("\n[bold]3. Running Ablation Study...[/]")
     
@@ -175,14 +175,14 @@ def main():
     parser = argparse.ArgumentParser(description="Run SciTrans-LLMs experiments")
     parser.add_argument("--corpus", type=Path, default=project_root / "corpus",
                        help="Path to corpus directory")
-    parser.add_argument("--backend", type=str, default="dummy",
-                       help="Translation backend (dummy, dictionary, openai, deepseek)")
+    parser.add_argument("--backend", type=str, default="dictionary",
+                       help="Translation backend (dictionary, free, openai, deepseek)")
     parser.add_argument("--quick", action="store_true",
                        help="Quick test with minimal data")
     parser.add_argument("--skip-ablation", action="store_true",
                        help="Skip ablation study")
     parser.add_argument("--compare-backends", type=str, nargs="+",
-                       default=["dummy", "dictionary"],
+                       default=["dictionary", "free"],
                        help="Backends to compare")
     
     args = parser.parse_args()

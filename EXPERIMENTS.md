@@ -11,7 +11,7 @@ source .venv/bin/activate
 # 2. Quick test to verify everything works
 python3 scripts/quick_test.py
 
-# 3. Run experiments (with dummy translator for now)
+# 3. Run experiments (with dictionary translator for now)
 python3 scripts/run_experiments.py --quick
 ```
 
@@ -72,14 +72,14 @@ corpus/
 
 ### Step 3: Run Experiments
 
-#### A. Quick Test (Dummy Translator)
+#### A. Quick Test (Dictionary Translator)
 ```bash
 python3 scripts/run_experiments.py --quick
 ```
 
 #### B. Full Ablation Study
 ```bash
-python3 scripts/run_experiments.py --backend dummy
+python3 scripts/run_experiments.py --backend dictionary
 ```
 
 #### C. With Real LLM Backend
@@ -91,7 +91,7 @@ python3 scripts/run_experiments.py --backend openai
 python3 scripts/run_experiments.py --backend deepseek
 
 # Compare multiple backends
-python3 scripts/run_experiments.py --compare-backends dummy dictionary openai
+python3 scripts/run_experiments.py --compare-backends dictionary openai deepseek
 ```
 
 #### D. Custom Corpus
