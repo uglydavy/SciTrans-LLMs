@@ -28,7 +28,9 @@ def launch(port: int = 7860, share: bool = False):
     
     class State:
         dark_mode = True
-        default_engine = 'free'
+        # Prefer the robust offline dictionary backend as GUI default;
+        # users can still select "free" or LLM engines explicitly.
+        default_engine = 'dictionary'
         default_masking = True
         default_reranking = True  # Reranking mandatory
         quality_passes = 1
@@ -101,9 +103,27 @@ html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!import
 .card-title { font-weight:600; font-size:10px; margin-bottom:3px; border-bottom:1px solid var(--border); padding-bottom:2px; }
 .upload-zone { border:2px dashed var(--border); border-radius:4px; padding:8px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .upload-zone:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
-.preview-card { flex:1!important; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-.preview-area { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; background:#1a1a2e; min-height:200px; max-height:calc(100vh - 350px); border-radius:4px; }
-.preview-area img { max-width:100%; max-height:100%; object-fit:contain; }
+.preview-card { flex:1!important; display:flex; flex-direction:column; min-height:0; overflow:hidden; max-height:100%; }
+.preview-area { 
+  flex:1; 
+  display:flex; 
+  align-items:center; 
+  justify-content:center; 
+  overflow:hidden;  /* Hide overflow, let image scale */
+  background:#1a1a2e; 
+  min-height:300px; 
+  max-height:calc(100vh - 380px);  /* Leave room for controls + nav */
+  border-radius:4px; 
+  position:relative;
+}
+.preview-area img { 
+  max-width:100%!important; 
+  max-height:100%!important; 
+  width:auto!important;
+  height:auto!important;
+  object-fit:contain!important; 
+  display:block;
+}
 .action-row { display:flex; gap:4px; margin-top:4px; }
 .action-row .q-btn { flex:1; font-size:10px!important; padding:4px 8px!important; }
 body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }

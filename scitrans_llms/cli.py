@@ -81,8 +81,8 @@ def translate(
         help="Target language code",
     ),
     backend: str = typer.Option(
-        "free", "--backend", "-b",
-        help="Translation backend (free ⭐, dictionary, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama)",
+        "dictionary", "--backend", "-b",
+        help="Translation backend (dictionary ⭐ default, free, improved-offline, openai, gpt-5.1, deepseek, anthropic, huggingface, ollama)",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",

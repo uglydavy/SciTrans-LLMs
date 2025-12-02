@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
-from .base import Translator, TranslationResult, TranslationContext
+from .base import Translator, TranslationResult, TranslationContext, DictionaryTranslator
 
 
 @dataclass
@@ -150,6 +150,9 @@ class FreeTranslator(Translator):
         """
         self.cache = TranslationCache(cache_dir)
         self.timeout = timeout
+        # Use a real dictionary-based translator as a high-quality fallback
+        # when all remote free services fail.
+        self._fallback_translator = DictionaryTranslator(glossary=None)
         self._stats = {
             'cache_hits': 0,
             'lingva_success': 0,
@@ -238,27 +241,52 @@ class FreeTranslator(Translator):
         
         return None
     
-    def _fallback_dictionary(self, text: str) -> str:
-        """Basic dictionary fallback for common words."""
-        # Simple word-by-word translation for most common words
-        basic_dict = {
-            'hello': 'bonjour', 'world': 'monde', 'the': 'le', 'a': 'un',
-            'is': 'est', 'are': 'sont', 'machine': 'machine', 'learning': 'apprentissage',
-            'neural': 'neuronal', 'network': 'réseau', 'deep': 'profond',
-            'model': 'modèle', 'data': 'données', 'algorithm': 'algorithme',
-            'how': 'comment', 'are': 'êtes', 'you': 'vous',
-        }
-        
-        words = text.lower().split()
-        translated_words = [basic_dict.get(word, word) for word in words]
-        return ' '.join(translated_words)
+    def _fallback_dictionary(self, text: str, source_lang: str, target_lang: str, context: Optional[TranslationContext]) -> str:
+        """High-quality offline fallback using DictionaryTranslator.
+
+        When all remote free services fail (Lingva, LibreTranslate, MyMemory),
+        we fall back to the dedicated DictionaryTranslator instead of a tiny
+        hard-coded word list. This gives substantially better coverage and
+        preserves placeholders and glossary behavior.
+        """
+        try:
+            # Build a minimal context so DictionaryTranslator can honour
+            # languages and any downstream glossary if present.
+            if context is not None:
+                fallback_ctx = context
+                fallback_ctx.source_lang = source_lang
+                fallback_ctx.target_lang = target_lang
+            else:
+                from scitrans_llms.translate.base import TranslationContext as _TC
+                fallback_ctx = _TC(source_lang=source_lang, target_lang=target_lang)
+
+            result = self._fallback_translator.translate(text, fallback_ctx)
+            return result.text
+        except Exception:
+            # Absolute last resort: a tiny inline dictionary to avoid failing
+            basic_dict = {
+                'hello': 'bonjour', 'world': 'monde', 'the': 'le', 'a': 'un',
+                'is': 'est', 'are': 'sont', 'machine': 'machine', 'learning': 'apprentissage',
+                'neural': 'neuronal', 'network': 'réseau', 'deep': 'profond',
+                'model': 'modèle', 'data': 'données', 'algorithm': 'algorithme',
+                'how': 'comment', 'you': 'vous',
+            }
+            words = text.lower().split()
+            translated_words = [basic_dict.get(word, word) for word in words]
+            return ' '.join(translated_words)
     
     def translate(
         self,
         text: str,
-        context: Optional[TranslationContext] = None
+        context: Optional[TranslationContext] = None,
+        num_candidates: int = 1,
     ) -> TranslationResult:
-        """Translate text using cascading free services with caching."""
+        """Translate text using cascading free services with caching.
+
+        The num_candidates argument is accepted for compatibility with the
+        generic Translator interface but is currently ignored; FreeTranslator
+        always returns a single best translation.
+        """
         if not text or not text.strip():
             return TranslationResult(
                 text=text,
@@ -307,9 +335,9 @@ class FreeTranslator(Translator):
             if translation:
                 backend_used = 'mymemory'
         
-        # 5. Fall back to basic dictionary
+        # 5. Fall back to robust dictionary-based offline translator
         if not translation:
-            translation = self._fallback_dictionary(text)
+            translation = self._fallback_dictionary(text, source, target, context)
             backend_used = 'dictionary_fallback'
             self._stats['fallback_used'] += 1
         
