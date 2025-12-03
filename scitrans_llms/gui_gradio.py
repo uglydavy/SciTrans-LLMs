@@ -2,12 +2,15 @@
 
 This is a complete rewrite of the GUI using Gradio for better UX, performance,
 and reliability. Key improvements over NiceGUI version:
-- Native PDF preview (no base64 conversion)
+- File-based PDF handling (Gradio 4.44 compatible)
 - Built-in drag-drop file upload
 - Real-time progress streaming
 - Async URL fetching
 - Better error handling
 - Cleaner, more responsive layout
+
+Note: Uses gr.File() for PDF display (Gradio 4.44). 
+When Gradio 5.0 releases, we can upgrade to gr.PDF() for inline preview.
 """
 
 from __future__ import annotations
@@ -373,23 +376,33 @@ def build_interface():
             # MIDDLE COLUMN: Source Preview
             with gr.Column(scale=1):
                 gr.Markdown("### 📖 Source PDF")
-                source_preview = gr.PDF(
-                    label="Source",
-                    height=600,
-                    interactive=False
+                source_preview = gr.File(
+                    label="Source PDF (click to download/view)",
+                    file_count="single",
+                    interactive=False,
+                    type="filepath"
+                )
+                source_info = gr.Textbox(
+                    label="Source Info",
+                    lines=2,
+                    interactive=False,
+                    placeholder="Upload a PDF to see info here"
                 )
             
-            # RIGHT COLUMN: Translated Preview
+            # RIGHT COLUMN: Translated Preview  
             with gr.Column(scale=1):
                 gr.Markdown("### 📝 Translated PDF")
-                translated_preview = gr.PDF(
-                    label="Translated",
-                    height=600,
-                    interactive=False
+                translated_preview = gr.File(
+                    label="Translated PDF (click to download)",
+                    file_count="single",
+                    interactive=False,
+                    type="filepath"
                 )
-                download_btn = gr.DownloadButton(
-                    "💾 Download Translation",
-                    visible=False
+                translated_info = gr.Textbox(
+                    label="Translation Info",
+                    lines=2,
+                    interactive=False,
+                    placeholder="Translation will appear here"
                 )
         
         # BOTTOM: Status & Logs
@@ -410,27 +423,39 @@ def build_interface():
         # Upload tab: Update preview when file uploaded
         def on_upload(file):
             if file is None:
-                return None, None, "No file uploaded"
-            return file, file, f"✓ Loaded: {Path(file).name}"
+                return None, None, "", "No file uploaded"
+            try:
+                file_path = Path(file if isinstance(file, str) else file.name)
+                size_mb = file_path.stat().st_size / (1024 * 1024)
+                info = f"✓ {file_path.name}\nSize: {size_mb:.2f} MB"
+                status = f"✓ Loaded: {file_path.name}"
+                return file, file, info, status
+            except Exception as e:
+                return None, None, f"❌ Error: {e}", f"❌ Error loading file"
         
         pdf_upload.change(
             fn=on_upload,
             inputs=[pdf_upload],
-            outputs=[current_source, source_preview, status_box]
+            outputs=[current_source, source_preview, source_info, status_box]
         )
         
         # URL tab: Fetch PDF
         def on_url_fetch(url):
             result = asyncio.run(fetch_pdf_from_url(url))
-            temp_file, status = result
+            temp_file, status_msg = result
             if temp_file:
-                return temp_file, temp_file, status, status
-            return None, None, None, status
+                try:
+                    size_mb = temp_file.stat().st_size / (1024 * 1024)
+                    info = f"✓ {temp_file.name}\nSize: {size_mb:.2f} MB"
+                    return str(temp_file), str(temp_file), info, status_msg, status_msg
+                except:
+                    return str(temp_file), str(temp_file), "✓ Downloaded", status_msg, status_msg
+            return None, None, "", status_msg, status_msg
         
         url_fetch_btn.click(
             fn=on_url_fetch,
             inputs=[url_input],
-            outputs=[current_source, source_preview, url_status, status_box]
+            outputs=[current_source, source_preview, source_info, url_status, status_box]
         )
         
         # Translate button
@@ -444,8 +469,14 @@ def build_interface():
             )
             
             if output_path:
-                return output_path, status, gr.update(value=output_path, visible=True)
-            return None, status, gr.update(visible=False)
+                try:
+                    out_path = Path(output_path)
+                    size_mb = out_path.stat().st_size / (1024 * 1024)
+                    info = f"✓ Translation complete\nSize: {size_mb:.2f} MB"
+                    return output_path, info, status
+                except:
+                    return output_path, "✓ Translation complete", status
+            return None, "❌ Translation failed", status
         
         translate_btn.click(
             fn=on_translate,
@@ -453,7 +484,7 @@ def build_interface():
                 current_source, direction, engine, pages_input,
                 quality_passes, num_candidates, enable_masking, glossary_upload
             ],
-            outputs=[translated_preview, status_box, download_btn]
+            outputs=[translated_preview, translated_info, status_box]
         )
         
         # Footer
