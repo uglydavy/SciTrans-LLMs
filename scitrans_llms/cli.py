@@ -864,24 +864,24 @@ def corpus(
 def gui(
     port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
     share: bool = typer.Option(False, "--share", "-s", help="Share publicly (if supported)"),
-    legacy: bool = typer.Option(False, "--legacy", help="Use legacy NiceGUI (old interface)"),
+    experimental: bool = typer.Option(False, "--experimental", help="Use experimental Gradio interface (UNSTABLE)"),
 ):
-    """Launch the web GUI (new Gradio interface).
+    """Launch the web GUI for scientific document translation.
     
-    Opens a browser window for scientific document translation.
+    Opens a browser window with the NiceGUI interface.
     
     Features:
     - PDF document support with layout preservation
-    - Native PDF preview (no base64 conversion)
     - Drag-and-drop file upload
-    - URL fetching with progress
+    - URL fetching for online PDFs
     - French ↔ English bilingual translation
     - Page selection and quality options
-    - Custom glossary support
-    - Multiple translation engines
-    - Real-time progress streaming
+    - Custom glossary support (CSV/TXT/JSON)
+    - Multiple translation engines (Free, OpenAI, DeepSeek, etc.)
+    - Corpus training for dictionary backend
+    - Real-time translation progress
     
-    Use --legacy flag to launch the old NiceGUI interface.
+    Use --experimental flag to test the unstable Gradio interface (NOT RECOMMENDED).
     """
     # Check PDF support
     try:
@@ -891,24 +891,8 @@ def gui(
         console.print("  [cyan]pip install PyMuPDF[/]")
     
     try:
-        if legacy:
-            # Launch legacy NiceGUI
-            try:
-                import nicegui
-            except ImportError:
-                console.print("[red]Error:[/] NiceGUI not installed")
-                console.print("  [cyan]pip install 'nicegui>=1.4.0'[/]")
-                raise typer.Exit(1)
-            
-            from scitrans_llms.gui import launch
-            
-            console.print("[bold]🚀 Starting SciTrans-LLMs GUI (Legacy NiceGUI)...[/]\n")
-            console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
-            console.print("[dim]Press Ctrl+C to stop the server[/]\n")
-            
-            launch(port=port, share=share)
-        else:
-            # Launch new Gradio GUI (default)
+        if experimental:
+            # Launch experimental Gradio GUI
             try:
                 import gradio
             except ImportError:
@@ -918,11 +902,27 @@ def gui(
             
             from scitrans_llms.gui_gradio import launch
             
-            console.print("[bold]🚀 Starting SciTrans-LLMs GUI (Gradio)...[/]\n")
+            console.print("[bold yellow]⚠️  Starting EXPERIMENTAL Gradio GUI (UNSTABLE)...[/bold yellow]\n")
             console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
             console.print("[dim]Press Ctrl+C to stop the server[/]\n")
-            console.print("[green]✨ New Gradio interface with improved UX and performance[/]")
-            console.print("[dim]To use the old interface, run: scitrans gui --legacy[/]\n")
+            console.print("[yellow]Warning: This interface has known bugs. Use at your own risk.[/]")
+            console.print("[dim]For stable interface, run: scitrans gui[/]\n")
+            
+            launch(port=port, share=share)
+        else:
+            # Launch stable NiceGUI (default)
+            try:
+                import nicegui
+            except ImportError:
+                console.print("[red]Error:[/] NiceGUI not installed")
+                console.print("  [cyan]pip install 'nicegui>=1.4.0'[/]")
+                raise typer.Exit(1)
+            
+            from scitrans_llms.gui import launch
+            
+            console.print("[bold]🚀 Starting SciTrans-LLMs GUI (NiceGUI)...[/]\n")
+            console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
+            console.print("[dim]Press Ctrl+C to stop the server[/]\n")
             
             launch(port=port, share=share)
     except Exception as e:

@@ -721,9 +721,30 @@ body.body--light .preview-area { background:#e8e8e8; }
                             test_ref = ui.textarea(placeholder='Optional: paste reference translation for BLEU score').props('rows=3').classes('w-full')
                         
                         with ui.element('div').classes('card'):
-                            ui.label('Ablation Study').classes('card-title')
-                            ui.label('Compare configurations to measure component contributions').classes('text-xs opacity-70 mb-2')
-                            ablation_btn = ui.button('Run Ablation (coming soon)').props('outline disabled')
+                            ui.label('Dictionary Training from Corpus').classes('card-title')
+                            ui.markdown('''
+Download parallel corpora and build dictionaries to improve offline translation quality.
+The dictionary backend will automatically use trained dictionaries matching your language pair.
+                            ''').classes('text-xs opacity-70 mb-2')
+                            
+                            corpus_train_status = ui.label('No corpus loaded').classes('text-xs opacity-70 mb-2')
+                            
+                            with ui.row().classes('w-full gap-2'):
+                                corpus_name_sel = ui.select(
+                                    {'europarl': 'Europarl (200MB)', 'opus-euconst': 'OPUS EU Constitution (5MB)', 'tatoeba': 'Tatoeba (50MB)'},
+                                    value='opus-euconst',
+                                    label='Corpus'
+                                ).classes('flex-grow')
+                                corpus_pair_sel = ui.select(
+                                    {'en-fr': 'EN → FR', 'fr-en': 'FR → EN'},
+                                    value='en-fr',
+                                    label='Language Pair'
+                                ).classes('w-32')
+                            
+                            with ui.row().classes('w-full gap-2 mt-2'):
+                                corpus_limit = ui.number(label='Max entries', value=10000, min=1000, max=100000, step=1000).classes('w-1/3')
+                                corpus_download_btn = ui.button('Download & Build Dictionary').props('color=primary')
+                                corpus_status_btn = ui.button('Show Status').props('outline')
                 
                 def run_test():
                     if not test_input.value:
@@ -761,6 +782,79 @@ body.body--light .preview-area { background:#e8e8e8; }
                         test_output.value = f'Error: {ex}'
                         test_status.text = 'Error'
                         log_event(f"Test error: {ex}", "ERROR")
+                
+                def corpus_download_and_build():
+                    """Download corpus and build dictionary for dictionary backend"""
+                    corpus_name = corpus_name_sel.value
+                    pair = corpus_pair_sel.value
+                    src_lang, tgt_lang = pair.split('-')
+                    limit = int(corpus_limit.value)
+                    
+                    corpus_train_status.text = 'Downloading corpus...'
+                    corpus_download_btn.props('loading')
+                    
+                    try:
+                        from scitrans_llms.translate.corpus_manager import download_corpus, get_corpus_dictionary
+                        import csv
+                        
+                        # Download
+                        def update(msg: str, pct: float):
+                            corpus_train_status.text = f"{msg} ({int(pct*100)}%)"
+                        
+                        corpus_path = download_corpus(corpus_name, src_lang, tgt_lang, update)
+                        
+                        corpus_train_status.text = 'Building dictionary...'
+                        
+                        # Build dictionary
+                        dictionary = get_corpus_dictionary(corpus_name, src_lang, tgt_lang, limit)
+                        
+                        # Save to default location for DictionaryTranslator
+                        dict_root = Path.home() / ".scitrans" / "dictionaries"
+                        dict_root.mkdir(parents=True, exist_ok=True)
+                        dict_path = dict_root / f"{corpus_name}_{src_lang}_{tgt_lang}.tsv"
+                        
+                        with open(dict_path, 'w', newline='', encoding='utf-8') as f:
+                            writer = csv.writer(f, delimiter='\t')
+                            for src, tgt in dictionary.items():
+                                writer.writerow([src, tgt])
+                        
+                        corpus_train_status.text = f'✓ Dictionary built: {len(dictionary)} entries saved to {dict_path.name}'
+                        log_event(f"Corpus dictionary built: {corpus_name} ({src_lang}-{tgt_lang}), {len(dictionary)} entries")
+                        ui.notify(f'Dictionary ready! {len(dictionary)} translation pairs', type='positive', position='top')
+                        
+                    except Exception as ex:
+                        corpus_train_status.text = f'Error: {str(ex)[:80]}'
+                        log_event(f"Corpus training error: {ex}", "ERROR")
+                        ui.notify(f'Training failed: {str(ex)[:50]}', type='negative')
+                    finally:
+                        corpus_download_btn.props(remove='loading')
+                
+                def corpus_show_status():
+                    """Show downloaded corpora status"""
+                    try:
+                        from scitrans_llms.translate.corpus_manager import CorpusManager
+                        cm = CorpusManager()
+                        downloaded = cm.list_downloaded()
+                        
+                        # Check for built dictionaries
+                        dict_root = Path.home() / ".scitrans" / "dictionaries"
+                        if dict_root.exists():
+                            dicts = [f.name for f in dict_root.glob("*.tsv")]
+                        else:
+                            dicts = []
+                        
+                        msg = f"Downloaded corpora: {', '.join(downloaded) if downloaded else 'None'}\n"
+                        msg += f"Built dictionaries: {', '.join(dicts) if dicts else 'None'}"
+                        corpus_train_status.text = msg
+                        ui.notify('Status updated', type='info')
+                        log_event("Corpus status checked")
+                        
+                    except Exception as ex:
+                        corpus_train_status.text = f'Error: {str(ex)[:80]}'
+                        log_event(f"Corpus status error: {ex}", "ERROR")
+                
+                corpus_download_btn.on_click(corpus_download_and_build)
+                corpus_status_btn.on_click(corpus_show_status)
                 
                 test_run_btn.on_click(run_test)
                 test_clear_btn.on_click(lambda: (setattr(test_input, 'value', ''), setattr(test_output, 'value', ''), setattr(bleu_label, 'text', '--'), setattr(terms_label, 'text', '--'), setattr(blocks_label, 'text', '--')))
