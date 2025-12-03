@@ -864,26 +864,26 @@ def corpus(
 def gui(
     port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
     share: bool = typer.Option(False, "--share", "-s", help="Share publicly (if supported)"),
+    legacy: bool = typer.Option(False, "--legacy", help="Use legacy NiceGUI (old interface)"),
 ):
-    """Launch the web GUI.
+    """Launch the web GUI (new Gradio interface).
     
     Opens a browser window for scientific document translation.
     
     Features:
     - PDF document support with layout preservation
+    - Native PDF preview (no base64 conversion)
+    - Drag-and-drop file upload
+    - URL fetching with progress
     - French ↔ English bilingual translation
     - Page selection and quality options
     - Custom glossary support
     - Multiple translation engines
-    """
-    # Check dependencies
-    try:
-        import nicegui
-    except ImportError:
-        console.print("[red]Error:[/] NiceGUI not installed")
-        console.print("  [cyan]pip install 'nicegui>=1.4.0'[/]")
-        raise typer.Exit(1)
+    - Real-time progress streaming
     
+    Use --legacy flag to launch the old NiceGUI interface.
+    """
+    # Check PDF support
     try:
         import fitz
     except ImportError:
@@ -891,13 +891,40 @@ def gui(
         console.print("  [cyan]pip install PyMuPDF[/]")
     
     try:
-        from scitrans_llms.gui import launch
-        
-        console.print("[bold]🚀 Starting SciTrans-LLMs GUI...[/]\n")
-        console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
-        console.print("[dim]Press Ctrl+C to stop the server[/]\n")
-        
-        launch(port=port, share=share)
+        if legacy:
+            # Launch legacy NiceGUI
+            try:
+                import nicegui
+            except ImportError:
+                console.print("[red]Error:[/] NiceGUI not installed")
+                console.print("  [cyan]pip install 'nicegui>=1.4.0'[/]")
+                raise typer.Exit(1)
+            
+            from scitrans_llms.gui import launch
+            
+            console.print("[bold]🚀 Starting SciTrans-LLMs GUI (Legacy NiceGUI)...[/]\n")
+            console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
+            console.print("[dim]Press Ctrl+C to stop the server[/]\n")
+            
+            launch(port=port, share=share)
+        else:
+            # Launch new Gradio GUI (default)
+            try:
+                import gradio
+            except ImportError:
+                console.print("[red]Error:[/] Gradio not installed")
+                console.print("  [cyan]pip install 'gradio>=4.0.0'[/]")
+                raise typer.Exit(1)
+            
+            from scitrans_llms.gui_gradio import launch
+            
+            console.print("[bold]🚀 Starting SciTrans-LLMs GUI (Gradio)...[/]\n")
+            console.print(f"[dim]Opening browser at http://127.0.0.1:{port}[/]")
+            console.print("[dim]Press Ctrl+C to stop the server[/]\n")
+            console.print("[green]✨ New Gradio interface with improved UX and performance[/]")
+            console.print("[dim]To use the old interface, run: scitrans gui --legacy[/]\n")
+            
+            launch(port=port, share=share)
     except Exception as e:
         console.print(f"[red]Error launching GUI:[/] {e}")
         import traceback
