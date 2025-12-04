@@ -96,10 +96,17 @@ class CandidateReranker:
     def _get_client(self):
         """Lazy initialization of OpenAI client."""
         if self._client is None and self.use_llm_scoring:
+            if not self.api_key:
+                # No API key, disable LLM scoring
+                self.use_llm_scoring = False
+                return None
             try:
                 from openai import OpenAI
                 self._client = OpenAI(api_key=self.api_key)
             except ImportError:
+                self.use_llm_scoring = False
+            except Exception:
+                # If client creation fails, disable LLM scoring
                 self.use_llm_scoring = False
         return self._client
     

@@ -788,8 +788,9 @@ class PDFMinerParser:
                 LAParams, LTTextBox, LTTextLine, LTChar, 
                 LTFigure, LTTextBoxHorizontal
             )
-        except ImportError:
-            print("pdfminer not available, falling back to PyMuPDF")
+        except ImportError as e:
+            import warnings
+            warnings.warn(f"pdfminer not available ({e}), falling back to PyMuPDF")
             return PDFParser().parse(pdf_path, pages, source_lang, target_lang)
         
         pdf_path = Path(pdf_path)

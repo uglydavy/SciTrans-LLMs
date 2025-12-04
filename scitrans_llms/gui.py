@@ -414,17 +414,11 @@ textarea.log-area {
                             with ui.tab_panels(upload_tabs, value=upload_tab).classes('w-full'):
                                 # Upload tab
                                 with ui.tab_panel(upload_tab).classes('p-0'):
-                                    with ui.element('div').classes('upload-zone').style('position:relative; min-height:140px; cursor:pointer;') as upload_zone:
-                                        ui.icon('cloud_upload', size='lg').classes('upload-icon')
-                                        ui.label('Drop PDF here or click to browse').classes('upload-label')
-                                        ui.label('Supports .pdf files up to 50MB').classes('text-xs opacity-50 mt-1')
                                     upload_comp = ui.upload(
                                         on_upload=handle_upload,
                                         auto_upload=True,
                                         max_files=1
-                                    ).props('accept=".pdf"').style('position:absolute; inset:0; opacity:0; cursor:pointer; z-index:10;').classes('w-full h-full')
-                                    # Make entire zone clickable
-                                    upload_zone.on('click', lambda e: upload_comp.run_method('pickFiles'))
+                                    ).props('accept=".pdf" label="📄 Drop PDF here or click to browse"').classes('w-full')
                                 
                                 # URL tab
                                 with ui.tab_panel(url_tab).classes('p-0'):
@@ -436,17 +430,45 @@ textarea.log-area {
                                             if not url:
                                                 ui.notify('Enter a URL', type='warning')
                                                 return
-                                            upload_status.text = 'Fetching...'
+                                            
                                             try:
+                                                upload_status.text = 'Fetching...'
                                                 import urllib.request
+                                                import ssl
+                                                
                                                 log_event(f"Fetching: {url}")
                                                 tmp = Path(tempfile.mkdtemp())
                                                 fname = url.split('/')[-1].split('?')[0] or 'document.pdf'
-                                                if not fname.endswith('.pdf'): fname += '.pdf'
+                                                if not fname.endswith('.pdf'): 
+                                                    fname += '.pdf'
                                                 fpath = tmp / fname
                                                 
+                                                # Download with SSL context
+                                                ssl_ctx = ssl.create_default_context()
+                                                ssl_ctx.check_hostname = False
+                                                ssl_ctx.verify_mode = ssl.CERT_NONE
+                                                
+                                                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                                                
+                                                # Download file
+                                                def download():
+                                                    with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as response:
+                                                        return response.read()
+                                                
                                                 loop = asyncio.get_event_loop()
-                                                await loop.run_in_executor(None, lambda: urllib.request.urlretrieve(url, fpath))
+                                                content = await loop.run_in_executor(None, download)
+                                                
+                                                # Write file
+                                                fpath.write_bytes(content)
+                                                
+                                                # Verify PDF
+                                                if not fpath.exists() or fpath.stat().st_size == 0:
+                                                    raise ValueError("Downloaded file is empty")
+                                                
+                                                # Check PDF magic bytes
+                                                with open(fpath, 'rb') as f:
+                                                    if f.read(4) != b'%PDF':
+                                                        raise ValueError("Downloaded file is not a valid PDF")
                                                 
                                                 state.uploaded_pdf_path = str(fpath)
                                                 state.uploaded_pdf_name = fname
@@ -465,7 +487,9 @@ textarea.log-area {
                                             except Exception as ex:
                                                 upload_status.text = 'Download failed'
                                                 log_event(f"URL error: {ex}", "ERROR")
-                                                ui.notify(f'Failed: {str(ex)[:50]}', type='negative')
+                                                import traceback
+                                                log_event(traceback.format_exc(), "ERROR")
+                                                ui.notify(f'Failed: {str(ex)[:80]}', type='negative')
                                         
                                         ui.button('Fetch', on_click=fetch_url, icon='download').props('dense size=sm')
                         
