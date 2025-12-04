@@ -894,7 +894,7 @@ textarea.log-area {
                                     ui.label('Blocks').classes('text-xs opacity-70')
                                     blocks_label = ui.label('--').classes('text-lg font-bold')
                             
-            ui.label('Reference (for BLEU)').classes('text-xs opacity-70 mt-3')
+                            ui.label('Reference (for BLEU)').classes('text-xs opacity-70 mt-3')
                             test_ref = ui.textarea(placeholder='Optional: paste reference translation for BLEU score').props('rows=4 auto-grow').classes('w-full').style('min-height:100px;')
                         
                         with ui.element('div').classes('card'):
