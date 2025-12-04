@@ -147,6 +147,8 @@ html, body {
   min-width:0; 
   max-width:50%;
 }
+.panel.left-panel { max-width:45%; }
+.panel.right-panel { max-width:55%; }
 .panel::-webkit-scrollbar { width:8px; } 
 .panel::-webkit-scrollbar-thumb { background:#555; border-radius:4px; }
 
@@ -175,18 +177,22 @@ html, body {
   text-align:center; 
   cursor:pointer; 
   transition:all 0.3s; 
-  min-height:120px; 
+  min-height:140px; 
   display:flex; 
   flex-direction:column; 
   align-items:center; 
   justify-content:center;
   font-size:var(--font-label);
+  position:relative;
+  background:rgba(99,102,241,0.05);
 }
 .upload-zone:hover { 
   border-color:#6366f1; 
-  background:rgba(99,102,241,0.1); 
-  transform:scale(1.02);
+  background:rgba(99,102,241,0.15); 
+  transform:scale(1.01);
 }
+.upload-zone .upload-icon { font-size:36px!important; opacity:0.6; margin-bottom:8px; }
+.upload-zone .upload-label { font-size:14px; opacity:0.8; }
 
 /* ========== PREVIEW ========== */
 .preview-card { 
@@ -203,13 +209,14 @@ html, body {
   justify-content:center; 
   overflow:auto;
   background:#1a1a2e; 
-  min-height:500px; 
+  min-height:400px;
+  max-height:calc(100vh - 380px);
   border-radius:8px; 
   position:relative;
 }
 .preview-area img { 
   max-width:100%!important; 
-  max-height:100%!important; 
+  max-height:calc(100vh - 420px)!important; 
   width:auto!important;
   height:auto!important;
   object-fit:contain!important; 
@@ -238,9 +245,17 @@ input, select, textarea, .q-field {
 
 /* ========== PAGINATION ========== */
 .pagination-btn { 
-  min-width:50px!important;
-  min-height:50px!important;
-  font-size:18px!important;
+  min-width:44px!important;
+  min-height:44px!important;
+  font-size:16px!important;
+  padding:8px!important;
+}
+.pagination-row { 
+  display:flex; 
+  align-items:center; 
+  gap:8px; 
+  justify-content:center; 
+  padding:8px 0;
 }
 
 /* ========== LIGHT MODE ========== */
@@ -258,6 +273,16 @@ body.body--light .card-title { color:#000; }
 *::-webkit-scrollbar-track { background:#1a1a2e; }
 *::-webkit-scrollbar-thumb { background:#555; border-radius:5px; }
 *::-webkit-scrollbar-thumb:hover { background:#777; }
+
+/* ========== TEXT AREAS ========== */
+textarea, .q-textarea { 
+  min-height:180px!important; 
+  font-family:monospace!important; 
+}
+textarea.log-area { 
+  min-height:120px!important;
+  overflow-y:auto!important;
+}
 </style>"""
     
     @ui.page('/')
@@ -294,7 +319,7 @@ body.body--light .card-title { color:#000; }
             with ui.tab_panel(t_translate).classes('p-0').style('height:100%; overflow:hidden;'):
                 with ui.element('div').classes('main-row'):
                     # LEFT PANEL
-                    with ui.element('div').classes('panel'):
+                    with ui.element('div').classes('panel left-panel'):
                         # Source Document with sliding tabs
                         with ui.element('div').classes('card'):
                             ui.label('Source Document').classes('card-title')
@@ -389,15 +414,17 @@ body.body--light .card-title { color:#000; }
                             with ui.tab_panels(upload_tabs, value=upload_tab).classes('w-full'):
                                 # Upload tab
                                 with ui.tab_panel(upload_tab).classes('p-0'):
-                                    with ui.element('div').classes('upload-zone') as upload_zone:
-                                        ui.icon('upload_file', size='24px').classes('opacity-50')
-                                        ui.label('Drop PDF or click').classes('text-xs opacity-70')
+                                    with ui.element('div').classes('upload-zone').style('position:relative; min-height:140px; cursor:pointer;') as upload_zone:
+                                        ui.icon('cloud_upload', size='lg').classes('upload-icon')
+                                        ui.label('Drop PDF here or click to browse').classes('upload-label')
+                                        ui.label('Supports .pdf files up to 50MB').classes('text-xs opacity-50 mt-1')
                                     upload_comp = ui.upload(
                                         on_upload=handle_upload,
                                         auto_upload=True,
                                         max_files=1
-                                    ).props('accept=".pdf"').style('position:absolute; opacity:0; width:100%; height:100%; top:0; left:0; cursor:pointer;')
-                                    upload_zone.on('click', lambda: upload_comp.run_method('pickFiles'))
+                                    ).props('accept=".pdf"').style('position:absolute; inset:0; opacity:0; cursor:pointer; z-index:10;').classes('w-full h-full')
+                                    # Make entire zone clickable
+                                    upload_zone.on('click', lambda e: upload_comp.run_method('pickFiles'))
                                 
                                 # URL tab
                                 with ui.tab_panel(url_tab).classes('p-0'):
@@ -522,7 +549,7 @@ body.body--light .card-title { color:#000; }
                         translate_btn = ui.button('Translate Document', icon='translate').classes('w-full').props('color=primary size=sm')
                     
                     # RIGHT PANEL - Preview and Actions
-                    with ui.element('div').classes('panel'):
+                    with ui.element('div').classes('panel right-panel'):
                         # Preview card
                         with ui.element('div').classes('card preview-card'):
                             ui.label('Preview').classes('card-title')
@@ -539,7 +566,7 @@ body.body--light .card-title { color:#000; }
                                         preview_html = ui.html('<div style="padding:20px;text-align:center;color:#666;font-size:11px;">Upload a document</div>', sanitize=False)
                                     
                                     # Page navigation
-                                    with ui.row().classes('w-full justify-center gap-1 py-1').style('flex-shrink:0;'):
+                                    with ui.row().classes('pagination-row w-full').style('flex-shrink:0;'):
                                         def prev_source():
                                             if current_page_num.value > 0:
                                                 current_page_num.value -= 1
@@ -558,10 +585,10 @@ body.body--light .card-title { color:#000; }
                                                     preview_html.set_content(get_preview(state.uploaded_pdf_path, current_page_num.value))
                                                 update_page_count()
                                         
-                                        ui.button(icon='chevron_left', on_click=prev_source).props('flat dense size=xs')
+                                        ui.button(icon='chevron_left', on_click=prev_source).props('flat dense').classes('pagination-btn')
                                         current_page_num = ui.number(value=0, min=0).props('dense readonly').style('display:none;')
-                                        page_label_source = ui.label('Page 0/0').classes('text-xs')
-                                        ui.button(icon='chevron_right', on_click=next_source).props('flat dense size=xs')
+                                        page_label_source = ui.label('Page 0/0').classes('text-sm font-mono')
+                                        ui.button(icon='chevron_right', on_click=next_source).props('flat dense').classes('pagination-btn')
                                         
                                         def update_page_count():
                                             if state.uploaded_pdf_path:
@@ -580,7 +607,7 @@ body.body--light .card-title { color:#000; }
                                         translated_preview_html = ui.html('<div style="padding:20px;text-align:center;color:#666;font-size:11px;">No translation yet</div>', sanitize=False)
                                     
                                     # Page navigation
-                                    with ui.row().classes('w-full justify-center gap-1 py-1').style('flex-shrink:0;'):
+                                    with ui.row().classes('pagination-row w-full').style('flex-shrink:0;'):
                                         def prev_translated():
                                             if translated_page_num.value > 0:
                                                 translated_page_num.value -= 1
@@ -599,10 +626,10 @@ body.body--light .card-title { color:#000; }
                                                     translated_preview_html.set_content(get_preview(state.translated_pdf_path, translated_page_num.value))
                                                 update_translated_page_count()
                                         
-                                        ui.button(icon='chevron_left', on_click=prev_translated).props('flat dense size=xs')
+                                        ui.button(icon='chevron_left', on_click=prev_translated).props('flat dense').classes('pagination-btn')
                                         translated_page_num = ui.number(value=0, min=0).props('dense readonly').style('display:none;')
-                                        page_label_translated = ui.label('Page 0/0').classes('text-xs')
-                                        ui.button(icon='chevron_right', on_click=next_translated).props('flat dense size=xs')
+                                        page_label_translated = ui.label('Page 0/0').classes('text-sm font-mono')
+                                        ui.button(icon='chevron_right', on_click=next_translated).props('flat dense').classes('pagination-btn')
                                         
                                         def update_translated_page_count():
                                             if state.translated_pdf_path:
@@ -617,9 +644,10 @@ body.body--light .card-title { color:#000; }
                         
                         # Progress card
                         with ui.element('div').classes('card'):
+                            ui.label('Translation Progress').classes('card-title')
                             prog_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
-                            prog_text = ui.label('Ready').classes('text-xs opacity-70')
-                            log_area = ui.textarea().props('readonly rows=2 dense').classes('w-full text-xs font-mono').style('max-height:50px;')
+                            prog_text = ui.label('Ready').classes('text-xs opacity-70 mb-2')
+                            log_area = ui.textarea().props('readonly rows=4 dense auto-grow').classes('w-full text-xs font-mono log-area').style('min-height:120px; max-height:180px; overflow-y:auto;')
                         
                         # Actions card
                         with ui.element('div').classes('card'):
@@ -651,6 +679,11 @@ body.body--light .card-title { color:#000; }
                         try:
                             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
                             log_area.value = '\n'.join(logs[-6:])
+                            # Auto-scroll to bottom
+                            try:
+                                log_area.run_method('scrollTo', {'top': 99999})
+                            except:
+                                pass
                             log_event(m)
                         except:
                             pass
@@ -670,13 +703,31 @@ body.body--light .card-title { color:#000; }
                         
                         log(f"Engine: {engine.value}, Direction: {current_direction['value']}")
                         
+                        # Track progress to prevent connection timeout
+                        progress_tracker = {'blocks_done': 0, 'total_blocks': 0}
+                        
                         def cb(m):
                             try:
                                 log(m)
                                 log_event(m)
+                                
+                                # Parse block progress from messages like "Translating block 5/100"
+                                if 'translating block' in m.lower():
+                                    try:
+                                        parts = m.split('block')[1].strip().split('/')
+                                        if len(parts) == 2:
+                                            progress_tracker['blocks_done'] = int(parts[0])
+                                            progress_tracker['total_blocks'] = int(parts[1])
+                                            # Update progress bar based on blocks
+                                            pct = 0.25 + 0.6 * (progress_tracker['blocks_done'] / progress_tracker['total_blocks'])
+                                            prog_bar.value = min(0.85, pct)
+                                            prog_text.text = f"Translating {progress_tracker['blocks_done']}/{progress_tracker['total_blocks']}"
+                                    except:
+                                        pass
+                                
                                 if 'pars' in m.lower(): 
                                     prog_bar.value = 0.2
-                                elif 'translat' in m.lower(): 
+                                elif 'translat' in m.lower() and 'block' not in m.lower(): 
                                     prog_bar.value = 0.5
                                 elif 'render' in m.lower(): 
                                     prog_bar.value = 0.85
@@ -800,10 +851,10 @@ body.body--light .card-title { color:#000; }
             with ui.tab_panel(t_testing).classes('p-0').style('height:100%; overflow:hidden;'):
                 with ui.element('div').classes('main-row'):
                     # LEFT - Input & Settings
-                    with ui.element('div').classes('panel'):
+                    with ui.element('div').classes('panel left-panel'):
                         with ui.element('div').classes('card'):
                             ui.label('Text Translation Test').classes('card-title')
-                            test_input = ui.textarea(label='Source text', placeholder='Enter text to translate...').props('rows=6').classes('w-full')
+                            test_input = ui.textarea(label='Source text', placeholder='Enter text to translate...').props('rows=10 auto-grow').classes('w-full').style('min-height:200px;')
                             with ui.row().classes('w-full gap-4 mt-2'):
                                 test_dir = ui.select({'en-fr': 'EN → FR', 'fr-en': 'FR → EN'}, value='en-fr', label='Direction').classes('w-1/3')
                                 test_eng = ui.select(get_engines(), value='dictionary', label='Engine').classes('w-1/3')
@@ -824,10 +875,10 @@ body.body--light .card-title { color:#000; }
                             test_clear_btn = ui.button('Clear').props('outline')
                     
                     # RIGHT - Output & Metrics
-                    with ui.element('div').classes('panel'):
+                    with ui.element('div').classes('panel right-panel'):
                         with ui.element('div').classes('card'):
                             ui.label('Translation Output').classes('card-title')
-                            test_output = ui.textarea(label='Result').props('rows=6 readonly').classes('w-full')
+                            test_output = ui.textarea(label='Result').props('rows=10 readonly auto-grow').classes('w-full').style('min-height:200px;')
                             test_status = ui.label('').classes('text-xs opacity-70 mt-1')
                         
                         with ui.element('div').classes('card'):
@@ -843,8 +894,8 @@ body.body--light .card-title { color:#000; }
                                     ui.label('Blocks').classes('text-xs opacity-70')
                                     blocks_label = ui.label('--').classes('text-lg font-bold')
                             
-                            ui.label('Reference (for BLEU)').classes('text-xs opacity-70 mt-3')
-                            test_ref = ui.textarea(placeholder='Optional: paste reference translation for BLEU score').props('rows=3').classes('w-full')
+            ui.label('Reference (for BLEU)').classes('text-xs opacity-70 mt-3')
+                            test_ref = ui.textarea(placeholder='Optional: paste reference translation for BLEU score').props('rows=4 auto-grow').classes('w-full').style('min-height:100px;')
                         
                         with ui.element('div').classes('card'):
                             ui.label('Dictionary Training from Corpus').classes('card-title')
@@ -857,8 +908,8 @@ The dictionary backend will automatically use trained dictionaries matching your
                             
                             with ui.row().classes('w-full gap-2'):
                                 corpus_name_sel = ui.select(
-                                    {'europarl': 'Europarl (200MB)', 'opus-euconst': 'OPUS EU Constitution (5MB)', 'tatoeba': 'Tatoeba (50MB)'},
-                                    value='opus-euconst',
+                                    {'opensubtitles': 'OpenSubtitles (80MB) - Fast', 'europarl': 'Europarl (150MB) - High Quality', 'wikipedia': 'Wikipedia (30MB) - Quick'},
+                                    value='opensubtitles',
                                     label='Corpus'
                                 ).classes('flex-grow')
                                 corpus_pair_sel = ui.select(
@@ -986,10 +1037,10 @@ The dictionary backend will automatically use trained dictionaries matching your
                 test_clear_btn.on_click(lambda: (setattr(test_input, 'value', ''), setattr(test_output, 'value', ''), setattr(bleu_label, 'text', '--'), setattr(terms_label, 'text', '--'), setattr(blocks_label, 'text', '--')))
             
             # ==================== GLOSSARY TAB ====================
-            with ui.tab_panel(t_glossary).classes('p-0'):
+            with ui.tab_panel(t_glossary).classes('p-0').style('height:100%; overflow:auto;'):
                 with ui.element('div').classes('main-row'):
-                    with ui.element('div').classes('panel'):
-                        with ui.element('div').classes('card'):
+                    with ui.element('div').classes('panel').style('max-width:100%;'):
+                        with ui.element('div').classes('card').style('min-height:calc(100vh - 180px);'):
                             ui.label('Default Scientific Glossary').classes('card-title')
                             with ui.row().classes('w-full gap-4 mb-2'):
                                 search = ui.input(label='Search terms').classes('flex-grow')
@@ -1001,8 +1052,8 @@ The dictionary backend will automatically use trained dictionaries matching your
                                 all_entries = []
                             tbl = ui.table(
                                 columns=[{'name': 'en', 'label': 'English', 'field': 'en', 'sortable': True}, {'name': 'fr', 'label': 'French', 'field': 'fr', 'sortable': True}, {'name': 'domain', 'label': 'Domain', 'field': 'domain'}],
-                                rows=all_entries[:30], row_key='en', pagination=10
-                            ).classes('w-full')
+                                rows=all_entries[:50], row_key='en', pagination={'rowsPerPage': 20}
+                            ).classes('w-full').style('max-height:calc(100vh - 280px);')
                             
                             def filter_tbl():
                                 s, d = search.value.lower(), domain_sel.value
@@ -1058,10 +1109,10 @@ Loading a corpus enhances translation quality by providing domain-specific termi
                             ui.upload(on_upload=on_custom_gloss, auto_upload=True).props('accept=".csv,.txt,.json"').classes('w-full')
             
             # ==================== DEVELOPER TAB ====================
-            with ui.tab_panel(t_developer).classes('p-0'):
+            with ui.tab_panel(t_developer).classes('p-0').style('height:100%; overflow:hidden;'):
                 with ui.element('div').classes('main-row'):
-                    with ui.element('div').classes('panel'):
-                        with ui.element('div').classes('card').style('flex:1; display:flex; flex-direction:column; min-height:0; max-height:60vh;'):
+                    with ui.element('div').classes('panel left-panel'):
+                        with ui.element('div').classes('card').style('flex:1; display:flex; flex-direction:column; min-height:calc(100vh - 180px);'):
                             ui.label('System Logs').classes('card-title')
                             with ui.row().classes('gap-2 mb-2'):
                                 def refresh(): dev_logs.value = '\n'.join(system_logs[-50:])
@@ -1073,8 +1124,8 @@ Loading a corpus enhances translation quality by providing domain-specific termi
                                 ui.button('Refresh', on_click=refresh).props('dense outline')
                                 ui.button('Clear', on_click=clear).props('dense outline')
                                 ui.button('Export', on_click=export).props('dense outline')
-                            dev_logs = ui.textarea().props('readonly').classes('w-full font-mono text-xs').style('flex:1; min-height:200px; max-height:400px;')
-                            dev_logs.value = '\n'.join(system_logs[-50:])
+                            dev_logs = ui.textarea().props('readonly auto-grow').classes('w-full font-mono text-xs').style('flex:1; min-height:400px; max-height:calc(100vh - 300px); overflow-y:auto;')
+                            dev_logs.value = '\n'.join(system_logs[-100:])
                             
                             # Auto-refresh logs every 2 seconds
                             def update_logs():
@@ -1082,7 +1133,7 @@ Loading a corpus enhances translation quality by providing domain-specific termi
                                     dev_logs.value = '\n'.join(system_logs[-50:])
                             ui.timer(2.0, update_logs)
                     
-                    with ui.element('div').classes('panel'):
+                    with ui.element('div').classes('panel right-panel'):
                         with ui.element('div').classes('card'):
                             ui.label('System Information').classes('card-title')
                             import sys, platform
@@ -1116,76 +1167,74 @@ Loading a corpus enhances translation quality by providing domain-specific termi
                                     ui.label(f'{status}').classes(f'text-xs {color}')
             
             # ==================== SETTINGS TAB ====================
-            with ui.tab_panel(t_settings).classes('p-0'):
-                with ui.element('div').classes('main-row'):
-                    with ui.element('div').classes('panel'):
-                        with ui.element('div').classes('card'):
-                            ui.label('API Keys').classes('card-title')
-                            ui.label('Configure API keys for premium translation services').classes('text-xs opacity-70 mb-3')
-                            
-                            services = ['openai', 'deepseek', 'anthropic', 'huggingface', 'deepl', 'google']
-                            for svc in services:
-                                k = km.get_key(svc)
-                                status = 'Configured' if k else 'Not set'
-                                color = 'text-green-400' if k else 'text-gray-400'
-                                with ui.row().classes('w-full justify-between py-1'):
-                                    ui.label(svc.capitalize()).classes('font-medium')
-                                    ui.label(status).classes(f'text-xs {color}')
-                            
-                            ui.separator().classes('my-3')
-                            key_svc = ui.select(services, value='openai', label='Service').classes('w-full')
-                            key_val = ui.input(label='API Key', password=True).classes('w-full')
-                            key_msg = ui.label('').classes('text-xs')
-                            
-                            def save_key():
-                                if not key_val.value.strip():
-                                    key_msg.text = 'Enter a key'
-                                    return
-                                try:
-                                    storage = km.set_key(key_svc.value, key_val.value.strip())
-                                    key_msg.text = f'Saved to {storage}'
-                                    key_val.value = ''
-                                    log_event(f"API key saved: {key_svc.value}")
-                                    ui.notify('Key saved', type='positive')
-                                except Exception as ex:
-                                    key_msg.text = f'Error: {ex}'
-                            ui.button('Save Key', on_click=save_key).classes('w-full mt-2')
+            with ui.tab_panel(t_settings).classes('p-0').style('height:100%; overflow:auto;'):
+                with ui.element('div').style('padding:var(--gap); display:flex; flex-direction:column; gap:var(--gap); max-width:900px; margin:auto;'):
+                    with ui.element('div').classes('card'):
+                        ui.label('API Keys').classes('card-title')
+                        ui.label('Configure API keys for premium translation services').classes('text-xs opacity-70 mb-3')
+                        
+                        services = ['openai', 'deepseek', 'anthropic', 'huggingface', 'deepl', 'google']
+                        for svc in services:
+                            k = km.get_key(svc)
+                            status = 'Configured' if k else 'Not set'
+                            color = 'text-green-400' if k else 'text-gray-400'
+                            with ui.row().classes('w-full justify-between py-1'):
+                                ui.label(svc.capitalize()).classes('font-medium')
+                                ui.label(status).classes(f'text-xs {color}')
+                        
+                        ui.separator().classes('my-3')
+                        key_svc = ui.select(services, value='openai', label='Service').classes('w-full')
+                        key_val = ui.input(label='API Key', password=True).classes('w-full')
+                        key_msg = ui.label('').classes('text-xs')
+                        
+                        def save_key():
+                            if not key_val.value.strip():
+                                key_msg.text = 'Enter a key'
+                                return
+                            try:
+                                storage = km.set_key(key_svc.value, key_val.value.strip())
+                                key_msg.text = f'Saved to {storage}'
+                                key_val.value = ''
+                                log_event(f"API key saved: {key_svc.value}")
+                                ui.notify('Key saved', type='positive')
+                            except Exception as ex:
+                                key_msg.text = f'Error: {ex}'
+                        ui.button('Save Key', on_click=save_key).classes('w-full mt-2')
                     
-                    with ui.element('div').classes('panel'):
-                        with ui.element('div').classes('card'):
-                            ui.label('Default Settings').classes('card-title')
-                            
-                            def on_dark_toggle(e):
-                                if e.value: dark.enable()
-                                else: dark.disable()
-                                state.dark_mode = e.value
-                                log_event(f"Theme: {'dark' if e.value else 'light'}")
-                            ui.switch('Dark mode', value=state.dark_mode, on_change=on_dark_toggle)
-                            
-                            def on_engine(e): state.default_engine = e.value; log_event(f"Default engine: {e.value}")
-                            ui.select(get_engines(), value=state.default_engine, label='Default translation engine', on_change=on_engine).classes('w-full mt-2')
-                            
-                            def on_quality(e): state.quality_passes = int(e.value); log_event(f"Quality: {e.value}")
-                            ui.number(label='Default quality passes', value=state.quality_passes, min=1, max=5, on_change=on_quality).classes('w-full mt-2')
-                            
-                            def on_context(e): state.context_window = int(e.value); log_event(f"Context: {e.value}")
-                            ui.number(label='Context window size', value=state.context_window, min=1, max=20, on_change=on_context).classes('w-full mt-2')
+                    with ui.element('div').classes('card'):
+                        ui.label('Default Settings').classes('card-title')
                         
-                        with ui.element('div').classes('card'):
-                            ui.label('Processing Defaults').classes('card-title')
-                            
-                            def on_mask(e): state.default_masking = e.value
-                            ui.switch('Enable formula/URL masking', value=state.default_masking, on_change=on_mask)
-                            
-                            def on_tables(e): state.translate_tables = e.value
-                            ui.switch('Translate table content', value=state.translate_tables, on_change=on_tables)
-                            
-                            def on_figures(e): state.translate_figures = e.value
-                            ui.switch('Translate figure captions', value=state.translate_figures, on_change=on_figures)
+                        def on_dark_toggle(e):
+                            if e.value: dark.enable()
+                            else: dark.disable()
+                            state.dark_mode = e.value
+                            log_event(f"Theme: {'dark' if e.value else 'light'}")
+                        ui.switch('Dark mode', value=state.dark_mode, on_change=on_dark_toggle)
                         
-                        with ui.element('div').classes('card'):
-                            ui.label('About').classes('card-title')
-                            ui.markdown('''
+                        def on_engine(e): state.default_engine = e.value; log_event(f"Default engine: {e.value}")
+                        ui.select(get_engines(), value=state.default_engine, label='Default translation engine', on_change=on_engine).classes('w-full mt-2')
+                        
+                        def on_quality(e): state.quality_passes = int(e.value); log_event(f"Quality: {e.value}")
+                        ui.number(label='Default quality passes', value=state.quality_passes, min=1, max=5, on_change=on_quality).classes('w-full mt-2')
+                        
+                        def on_context(e): state.context_window = int(e.value); log_event(f"Context: {e.value}")
+                        ui.number(label='Context window size', value=state.context_window, min=1, max=20, on_change=on_context).classes('w-full mt-2')
+                    
+                    with ui.element('div').classes('card'):
+                        ui.label('Processing Defaults').classes('card-title')
+                        
+                        def on_mask(e): state.default_masking = e.value
+                        ui.switch('Enable formula/URL masking', value=state.default_masking, on_change=on_mask)
+                        
+                        def on_tables(e): state.translate_tables = e.value
+                        ui.switch('Translate table content', value=state.translate_tables, on_change=on_tables)
+                        
+                        def on_figures(e): state.translate_figures = e.value
+                        ui.switch('Translate figure captions', value=state.translate_figures, on_change=on_figures)
+                    
+                    with ui.element('div').classes('card'):
+                        ui.label('About').classes('card-title')
+                        ui.markdown('''
 **SciTrans-LLMs** v1.0
 
 Scientific document translation system with:
@@ -1193,7 +1242,7 @@ Scientific document translation system with:
 - Terminology management via glossaries
 - Multiple translation backends
 - Evaluation metrics (BLEU, glossary adherence)
-                            ''').classes('text-sm opacity-80')
+                        ''').classes('text-sm opacity-80')
     
     log_event("GUI ready")
     print(f"\n{'='*60}\nSciTrans-LLMs GUI - http://127.0.0.1:{port}\n{'='*60}")

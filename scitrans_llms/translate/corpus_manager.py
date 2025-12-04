@@ -42,44 +42,46 @@ class CorpusInfo:
     license: str = "unknown"
 
 
-# Available corpora
+# Available corpora - using OPUS (opus.nlpl.eu) as primary source
+# OPUS is actively maintained and provides reliable downloads
 AVAILABLE_CORPORA = {
     "europarl": CorpusInfo(
         name="Europarl",
-        description="European Parliament proceedings parallel corpus",
-        url_template="https://www.statmt.org/europarl/v7/{src}-{tgt}.tgz",
+        description="European Parliament proceedings (OPUS)",
+        url_template="http://opus.nlpl.eu/download.php?f=Europarl/v8/moses/{src}-{tgt}.txt.zip",
         languages=[
-            ("en", "fr"), ("en", "de"), ("en", "es"), ("en", "it"),
-            ("en", "pt"), ("en", "nl"), ("en", "el"), ("en", "da"),
-            ("fr", "en"), ("de", "en"), ("es", "en"),
+            ("en", "fr"), ("fr", "en"), ("en", "de"), ("de", "en"),
+            ("en", "es"), ("es", "en"), ("en", "it"), ("it", "en"),
+            ("en", "pt"), ("pt", "en"), ("en", "nl"), ("nl", "en"),
         ],
         format="txt",
-        size_mb=200,
+        size_mb=150,
         license="Public Domain",
     ),
-    "opus-euconst": CorpusInfo(
-        name="OPUS EU Constitution",
-        description="EU Constitution in multiple languages (smaller)",
-        url_template="https://opus.nlpl.eu/download.php?f=EUconst/v1/moses/{src}-{tgt}.txt.zip",
+    "opensubtitles": CorpusInfo(
+        name="OpenSubtitles",
+        description="Movie subtitles parallel corpus (OPUS) - smaller, faster",
+        url_template="http://opus.nlpl.eu/download.php?f=OpenSubtitles/v2018/moses/{src}-{tgt}.txt.zip",
         languages=[
-            ("en", "fr"), ("en", "de"), ("en", "es"), ("en", "it"),
-            ("fr", "en"), ("de", "en"),
+            ("en", "fr"), ("fr", "en"), ("en", "de"), ("de", "en"),
+            ("en", "es"), ("es", "en"), ("en", "it"), ("it", "en"),
+            ("en", "pt"), ("pt", "en"),
         ],
         format="txt",
-        size_mb=5,
+        size_mb=80,
         license="Public Domain",
     ),
-    "tatoeba": CorpusInfo(
-        name="Tatoeba",
-        description="Crowdsourced sentence pairs from Tatoeba",
-        url_template="https://downloads.tatoeba.org/exports/per_language/{src}/{src}-{tgt}_sentences.tsv.bz2",
+    "wikipedia": CorpusInfo(
+        name="Wikipedia",
+        description="Comparable corpus from Wikipedia (OPUS)",
+        url_template="http://opus.nlpl.eu/download.php?f=Wikipedia/v1.0/moses/{src}-{tgt}.txt.zip",
         languages=[
-            ("en", "fr"), ("en", "de"), ("en", "es"), ("en", "ja"),
-            ("en", "zh"), ("fr", "en"), ("de", "en"),
+            ("en", "fr"), ("fr", "en"), ("en", "de"), ("de", "en"),
+            ("en", "es"), ("es", "en"),
         ],
-        format="tsv",
-        size_mb=50,
-        license="CC BY 2.0",
+        format="txt",
+        size_mb=30,
+        license="CC BY-SA",
     ),
 }
 
