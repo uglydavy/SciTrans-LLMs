@@ -1,0 +1,28 @@
+{
+  "generation_date": "2025-12-05T03:42:06.863523",
+  "components_generated": [
+    "comparison_table.csv",
+    "comparison_table.tex",
+    "ablation_study.png",
+    "training_curves.png",
+    "error_analysis.png",
+    "dataset_visualization.png",
+    "dataset_statistics.json",
+    "ABSTRACT.md"
+  ],
+  "thesis_sections": [
+    "Abstract",
+    "Literature Review",
+    "System Development",
+    "Experiments",
+    "Results & Analysis",
+    "Conclusion"
+  ],
+  "metrics_implemented": [
+    "BLEU",
+    "chrF",
+    "METEOR",
+    "LaTeX Preservation",
+    "Success Rate"
+  ]
+}

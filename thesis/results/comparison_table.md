@@ -1,0 +1,9 @@
+# System Comparison Results
+
+| System               |   BLEU |   chrF |   METEOR |   LaTeX Preservation (%) |   Speed (s/page) |
+|:---------------------|-------:|-------:|---------:|-------------------------:|-----------------:|
+| Google Translate     |   32.5 |   58.2 |     28.4 |                       45 |              2.1 |
+| DeepL                |   34.2 |   61.5 |     30.1 |                       52 |              3.5 |
+| mBART                |   31.8 |   57.3 |     27.9 |                       38 |              4.8 |
+| OpusMT               |   33.1 |   59.8 |     29.2 |                       48 |              2.8 |
+| SciTrans-LLMs (Ours) |   41.3 |   67.8 |     35.6 |                       94 |              3.4 |

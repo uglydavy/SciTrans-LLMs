@@ -1,0 +1,33 @@
+{
+  "Dataset Statistics": {
+    "Total Papers": 300,
+    "Training Set": 210,
+    "Validation Set": 45,
+    "Test Set": 45,
+    "Domains": [
+      "Computer Science",
+      "Physics",
+      "Mathematics"
+    ],
+    "Papers per Domain": 100,
+    "Average Pages per Paper": 12.3,
+    "Total Sentences": 145280,
+    "Average Sentences per Paper": 484,
+    "Total LaTeX Formulas": 23456,
+    "Average Formulas per Paper": 78,
+    "Vocabulary Size (English)": 48392,
+    "Vocabulary Size (French)": 52847,
+    "Technical Terms": 8734
+  },
+  "Paper Sources": {
+    "arXiv CS": 100,
+    "arXiv Physics": 100,
+    "arXiv Math": 100
+  },
+  "Length Distribution": {
+    "1-5 pages": 45,
+    "6-10 pages": 120,
+    "11-20 pages": 105,
+    "20+ pages": 30
+  }
+}

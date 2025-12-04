@@ -1,0 +1,1063 @@
+À condition que l'attribution appropriée soit fournie, Google accorde par la présente l'autorisation à
+reproduire les tableaux et les figures de ce document uniquement à des fins journalistiques ou
+ouvrages savants.
+L'attention est tout ce dont vous avez besoin
+Ashish Vaswani∗
+Cerveau Google
+avaswani@google.com
+Noam Shazeer∗
+Cerveau Google
+noam@google.com
+Niki Parmar∗
+Recherche Google
+nikip@google.com
+Jakob Uszkoreit∗
+Recherche Google
+usz@google.com
+Llion Jones∗
+Recherche Google
+llion@google.com
+Aidan N. Gomez∗†
+Université de Toronto
+aidan@cs.toronto.edu
+Lukasz Kaiser∗
+Cerveau Google
+lukaszkaiser@google.com
+Illia Polosukhin∗‡
+illia.polosukhin@gmail.com
+Résumé
+Les modèles de transduction de séquence dominante sont basés sur des modèles complexes récurrents ou
+réseaux de neurones convolutifs qui comprennent un encodeur et un décodeur.Le meilleur
+Les modèles performants connectent également l'encodeur et le décodeur via une attention
+mécanisme.Nous proposons une nouvelle architecture réseau simple, le Transformer,
+basé uniquement sur des mécanismes d'attention, s'affranchissant des récurrences et des circonvolutions
+entièrement.Des expériences sur deux tâches de traduction automatique montrent que ces modèles
+être de qualité supérieure tout en étant plus parallélisable et nécessitant beaucoup
+moins de temps pour s'entraîner.Notre modèle atteint 28,4 BLEU sur le WMT 2014 Anglais-
+tâche de traduction vers l'allemand, améliorant les meilleurs résultats existants, y compris
+ensembles, par plus de 2 BLEU.Concernant la tâche de traduction de l'anglais vers le français du WMT 2014,
+notre modèle établit un nouveau score BLEU de pointe pour un modèle unique de 41,8 après
+formation de 3,5 jours sur huit GPU, une petite fraction des coûts de formation du
+meilleurs modèles de la littérature.Nous montrons que le Transformateur se généralise bien à
+d'autres tâches en l'appliquant avec succès à la circonscription anglaise en analysant à la fois avec
+données de formation volumineuses et limitées.
+∗Contribution égale.L’ordre des annonces est aléatoire.Jakob a proposé de remplacer les RNN par l'auto-attention et a commencé
+l'effort d'évaluer cette idée.Ashish, avec Illia, a conçu et mis en œuvre les premiers modèles Transformer et
+a été impliqué de manière cruciale dans tous les aspects de ce travail.Noam a proposé une attention aux produits scalaires à l'échelle, multi-têtes
+attention et la représentation de position sans paramètre et est devenu l'autre personne impliquée dans presque tous les
+détail.Niki a conçu, implémenté, réglé et évalué d'innombrables variantes de modèles dans notre base de code d'origine et
+tenseur2tenseur.Llion a également expérimenté de nouvelles variantes de modèles, était responsable de notre base de code initiale et
+inférences et visualisations efficaces.Lukasz et Aidan ont passé d'innombrables journées à concevoir diverses parties et
+implémentant tensor2tensor, remplaçant notre base de code précédente, améliorant considérablement les résultats et accélérant massivement
+nos recherches.
+†Travail effectué chez Google Brain.
+‡Travail effectué chez Google Research.
+31e Conférence sur les systèmes de traitement de l'information neuronale (NIPS 2017), Long Beach, Californie, États-Unis.
+arXiv:1706.03762v7 [cs.CL] 2 août 2023
+
+1
+Introduction
+Réseaux de neurones récurrents, mémoire à long terme [13] et réseaux de neurones récurrents contrôlés [7]
+en particulier, ont été solidement établies en tant qu'approches de pointe en matière de modélisation de séquences et
+problèmes de transduction tels que la modélisation du langage et la traduction automatique [35, 2, 5].De nombreux
+les efforts ont depuis continué pour repousser les limites des modèles de langage récurrents et des encodeurs-décodeurs
+architectures [38, 24, 15].
+Les modèles récurrents prennent généralement en compte le calcul en fonction des positions des symboles de l'entrée et de la sortie.
+séquences.En alignant les positions sur les étapes du temps de calcul, ils génèrent une séquence de
+indique ht, en fonction de l'état caché précédent ht−1 et de l'entrée pour la position t.Ceci est intrinsèquement
+la nature séquentielle exclut la parallélisation dans les exemples de formation, ce qui devient critique à long terme
+longueurs de séquence, car les contraintes de mémoire limitent le traitement par lots entre les exemples.Des travaux récents ont permis
+améliorations significatives de l'efficacité de calcul grâce à des astuces de factorisation [21] et conditionnelle
+calcul [32], tout en améliorant également les performances du modèle dans ce dernier cas.Le fondamental
+la contrainte du calcul séquentiel demeure cependant.
+Les mécanismes d’attention sont devenus partie intégrante de la modélisation et de la transduction de séquences convaincantes.
+modèles de tion dans diverses tâches, permettant la modélisation des dépendances sans tenir compte de leur distance dans
+les séquences d'entrée ou de sortie [2, 19].Dans la plupart des cas [27], cependant, de tels mécanismes d’attention
+sont utilisés en conjonction avec un réseau récurrent.
+Dans ce travail, nous proposons le Transformer, une architecture de modèle évitant la récurrence et à la place
+s'appuyant entièrement sur un mécanisme d'attention pour établir des dépendances globales entre l'entrée et la sortie.
+Le Transformer permet une parallélisation beaucoup plus importante et peut atteindre un nouvel état de l'art en
+qualité de traduction après avoir été formé pendant seulement douze heures sur huit GPU P100.
+2
+Contexte
+L'objectif de réduire le calcul séquentiel constitue également le fondement du GPU neuronal étendu.
+[16], ByteNet [18] et ConvS2S [9], qui utilisent tous des réseaux de neurones convolutifs comme construction de base
+bloc, calculant les représentations cachées en parallèle pour toutes les positions d'entrée et de sortie.Dans ces modèles,
+le nombre d'opérations nécessaires pour relier les signaux provenant de deux positions d'entrée ou de sortie arbitraires augmente
+dans la distance entre les positions, linéairement pour ConvS2S et logarithmiquement pour ByteNet.Cela fait
+il est plus difficile d'apprendre les dépendances entre positions distantes [12].Dans le Transformer, c'est
+réduit à un nombre constant d'opérations, mais au prix d'une résolution efficace réduite en raison
+à la moyenne des positions pondérées par l'attention, un effet que nous contrecarrons avec l'attention multi-têtes comme
+décrit à la section 3.2.
+L'auto-attention, parfois appelée intra-attention, est un mécanisme d'attention reliant différentes positions
+d'une seule séquence afin de calculer une représentation de la séquence.L'attention personnelle a été
+utilisé avec succès dans diverses tâches, notamment la compréhension écrite, le résumé abstrait,
+implication textuelle et apprentissage des représentations de phrases indépendantes des tâches [4, 27, 28, 22].
+Les réseaux de mémoire de bout en bout sont basés sur un mécanisme d'attention récurrente plutôt que sur des séquences.
+récurrence alignée et il a été démontré qu'ils fonctionnent bien en matière de réponse à des questions en langage simple et
+tâches de modélisation du langage [34].
+Cependant, à notre connaissance, le Transformer est le premier modèle de transduction s'appuyant sur
+entièrement sur l'auto-attention pour calculer des représentations de ses entrées et sorties sans utiliser de séquence-
+RNN alignés ou convolution.Dans les sections suivantes, nous décrirons le Transformateur, motiverons
+l'attention personnelle et discutent de ses avantages par rapport à des modèles tels que [17, 18] et [9].
+3
+Architecture du modèle
+La plupart des modèles de transduction de séquences neuronales compétitifs ont une structure codeur-décodeur [5, 2, 35].
+Ici, l'encodeur mappe une séquence d'entrée de représentations de symboles (x1, ..., xn) à une séquence
+de représentations continues z = (z1, ..., zn).Étant donné z, le décodeur génère alors une sortie
+séquence (y1, ..., ym) de symboles, un élément à la fois.A chaque étape le modèle est auto-régressif
+[10], consommant les symboles générés précédemment comme entrée supplémentaire lors de la génération du suivant.
+2
+
+Figure 1 : Le Transformer - architecture du modèle.
+Le Transformer suit cette architecture globale en utilisant une auto-attention empilée et ponctuelle, entièrement
+couches connectées pour le codeur et le décodeur, illustrées dans les moitiés gauche et droite de la figure 1,
+respectivement.
+3.1
+Piles d'encodeurs et de décodeurs
+Encodeur :
+L'encodeur est composé d'un empilement de N = 6 couches identiques.Chaque couche comporte deux
+sous-couches.Le premier est un mécanisme d'auto-attention à plusieurs têtes, et le second est un mécanisme simple de positionnement.
+sage réseau de rétroaction entièrement connecté.Nous employons une connexion résiduelle [11] autour de chacun des
+les deux sous-couches, suivies d'une normalisation des couches [1].Autrement dit, la sortie de chaque sous-couche est
+LayerNorm(x + Sublayer(x)), où Sublayer(x) est la fonction implémentée par la sous-couche
+lui-même.Pour faciliter ces connexions résiduelles, toutes les sous-couches du modèle, ainsi que l'intégration
+couches, produisent des sorties de dimension dmodel = 512.
+Décodeur :
+Le décodeur est également composé d'un empilement de N = 6 couches identiques.En plus des deux
+Sous-couches dans chaque couche de codeur, le décodeur insère une troisième sous-couche, qui effectue des opérations multi-têtes.
+attention sur la sortie de la pile d’encodeurs.Semblable à l'encodeur, nous utilisons des connexions résiduelles
+autour de chacune des sous-couches, suivi d'une normalisation des couches.Nous modifions également l'auto-attention
+sous-couche dans la pile de décodeurs pour empêcher les positions de s'occuper des positions suivantes.Ceci
+Le masquage, combiné au fait que les intégrations de sortie sont décalées d'une position, garantit que le
+les prédictions pour la position i ne peuvent dépendre que des sorties connues aux positions inférieures à i.
+3.2
+Attention
+Une fonction d'attention peut être décrite comme mappant une requête et un ensemble de paires clé-valeur à une sortie,
+où la requête, les clés, les valeurs et la sortie sont tous des vecteurs.La sortie est calculée comme une somme pondérée
+3
+
+Attention aux produits scalaires à l'échelle
+Attention multi-têtes
+Figure 2 : (à gauche) Attention au produit scalaire à l’échelle.(à droite) L’attention multi-têtes se compose de plusieurs
+couches d’attention fonctionnant en parallèle.
+des valeurs, où le poids attribué à chaque valeur est calculé par une fonction de compatibilité du
+requête avec la clé correspondante.
+3.2.1
+Attention aux produits scalaires à l'échelle
+Nous appelons notre attention particulière « Attention au produit scalaire » (Figure 2).L'entrée consiste en
+requêtes et clés de dimension dk, et valeurs de dimension dv.Nous calculons les produits scalaires du
+interrogez avec toutes les clés, divisez chacune par √dk et appliquez une fonction softmax pour obtenir les poids sur le
+valeurs.
+En pratique, nous calculons la fonction d'attention sur un ensemble de requêtes simultanément, regroupées
+dans une matrice Q. Les clés et les valeurs sont également regroupées dans les matrices K et V .Nous calculons
+la matrice des sorties comme :
+Attention(Q, K, V ) = softmax(QKT
+√je ne sais pas
+)V
+(1)
+Les deux fonctions d'attention les plus couramment utilisées sont l'attention additive [2] et le produit scalaire (multi-
+plicatif) attention.L'attention sur le produit scalaire est identique à notre algorithme, à l'exception du facteur d'échelle
+de
+1
+√je ne sais pas.L'attention additive calcule la fonction de compatibilité à l'aide d'un réseau à action directe avec
+une seule couche cachée.Bien que les deux soient similaires en termes de complexité théorique, l'attention portée aux produits scalaires est
+beaucoup plus rapide et plus économe en espace dans la pratique, car il peut être mis en œuvre à l'aide de systèmes hautement optimisés.
+code de multiplication matricielle.
+Alors que pour de petites valeurs de dk, les deux mécanismes fonctionnent de manière similaire, l’attention additive surpasse
+attention au produit sans mise à l'échelle pour des valeurs plus grandes de dk [3].Nous pensons que pour de grandes valeurs de
+n'est pas connu, les produits scalaires augmentent en ampleur, poussant la fonction softmax dans les régions où elle a
+gradients extrêmement petits 4. Pour contrecarrer cet effet, nous mettons à l'échelle les produits scalaires par
+1
+√je ne sais pas.
+3.2.2
+Attention multi-têtes
+Au lieu d'effectuer une seule fonction d'attention avec des clés, des valeurs et des requêtes dimensionnelles dmodel,
+nous avons trouvé avantageux de projeter linéairement les requêtes, les clés et les valeurs h fois avec des méthodes différentes et apprises.
+projections linéaires aux dimensions dk, dk et dv, respectivement.Sur chacune de ces versions projetées de
+requêtes, clés et valeurs, nous effectuons ensuite la fonction d'attention en parallèle, ce qui donne des résultats dv-dimensionnels.
+4Pour illustrer pourquoi les produits scalaires deviennent grands, supposons que les composantes de q et k sont indépendantes et aléatoires.
+variables de moyenne 0 et de variance 1. Alors leur produit scalaire, q · k = Pdk
+i = 1 qiki, a une moyenne de 0 et une variance dk.
+4
+
+valeurs de sortie.Celles-ci sont concaténées et à nouveau projetées, ce qui donne les valeurs finales, comme
+représenté à la figure 2.
+L'attention multi-têtes permet au modèle de s'occuper conjointement des informations provenant de différentes représentations
+sous-espaces à différentes positions.Avec une seule tête d’attention, la moyenne inhibe cela.
+MultiHead(Q, K, V ) = Concat(head1, ..., headh)W O
+où en-têtei = Attention(QW Q
+je , KW K
+je , VWV
+je)
+Où les projections sont des matrices de paramètres W Q
+je
+∈Rdmodèle×dk, W K
+je
+∈Rdmodèle×dk, W V
+je
+∈Rdmodèle×dv
+et W O ∈Rhdv×dmodel.
+Dans ce travail, nous employons h = 8 couches d’attention parallèles, ou têtes.Pour chacun d’eux, nous utilisons
+dk = dv = dmodel/h = 64. En raison de la dimension réduite de chaque tête, le coût total de calcul
+est similaire à celle de l’attention mono-tête avec pleine dimensionnalité.
+3.2.3
+Applications de l'attention dans notre modèle
+Le Transformer utilise l’attention multi-têtes de trois manières différentes :
+• Dans les couches "attention codeur-décodeur", les requêtes proviennent de la couche décodeur précédente,
+et les clés mémoire et les valeurs proviennent de la sortie de l'encodeur.Cela permet à chaque
+position dans le décodeur pour surveiller toutes les positions dans la séquence d’entrée.Cela imite le
+mécanismes d'attention typiques du codeur-décodeur dans les modèles séquence à séquence tels que
+[38, 2, 9].
+• L'encodeur contient des couches d'auto-attention.Dans une couche d'auto-attention, toutes les clés, valeurs
+et les requêtes proviennent du même endroit, dans ce cas, la sortie de la couche précédente dans le
+encodeur.Chaque position dans l'encodeur peut s'occuper de toutes les positions de la couche précédente du
+encodeur.
+• De même, les couches d'auto-attention dans le décodeur permettent à chaque position dans le décodeur de s'occuper de
+toutes les positions dans le décodeur jusqu'à cette position incluse.Nous devons empêcher vers la gauche
+flux d'informations dans le décodeur pour préserver la propriété auto-régressive.Nous mettons en œuvre cela
+à l'intérieur de l'attention du produit scalaire mis à l'échelle en masquant (en définissant sur −∞) toutes les valeurs de l'entrée
+des softmax qui correspondent à des connexions illégales.Voir la figure 2.
+3.3
+Réseaux Feed-Forward par position
+En plus des sous-couches d'attention, chacune des couches de notre encodeur et décodeur contient un
+réseau feed-forward connecté, qui est appliqué à chaque position séparément et de manière identique.Ceci
+se compose de deux transformations linéaires avec une activation ReLU entre les deux.
+FFN(x) = max(0, xW1 + b1)W2 + b2
+(2)
+Bien que les transformations linéaires soient les mêmes dans différentes positions, elles utilisent des paramètres différents.
+de couche en couche.Une autre façon de décrire cela est de considérer deux convolutions avec une taille de noyau de 1.
+La dimensionnalité de l'entrée et de la sortie est dmodel = 512, et la couche interne a une dimensionnalité
+dff = 2048.
+3.4
+Intégrations et Softmax
+Comme pour d’autres modèles de transduction de séquence, nous utilisons des plongements appris pour convertir l’entrée
+jetons et jetons de sortie vers des vecteurs de dimension dmodel.Nous utilisons également la transformation linéaire apprise habituelle.
+mation et fonction softmax pour convertir la sortie du décodeur en probabilités prédites du prochain jeton.Dans
+notre modèle, nous partageons la même matrice de poids entre les deux couches d'intégration et le pré-softmax
+transformation linéaire, similaire à [30].Dans les couches d'intégration, nous multiplions ces poids par √dmodel.
+5
+
+Tableau 1 : longueurs de chemin maximales, complexité par couche et nombre minimum d'opérations séquentielles
+pour différents types de couches.n est la longueur de la séquence, d est la dimension de représentation, k est le noyau
+taille des circonvolutions et r la taille du quartier en auto-attention restreinte.
+Type de calque
+Complexité par couche
+Séquentiel
+Longueur maximale du chemin
+Opérations
+Attention personnelle
+O(n2 · d)
+O(1)
+O(1)
+Récurrent
+O(n · d2)
+O(n)
+O(n)
+Convolutif
+O(k · n · d2)
+O(1)
+O(logk(n))
+Auto-attention (restreint)
+O(r · n · d)
+O(1)
+O(n/r)
+3.5
+Encodage positionnel
+Puisque notre modèle ne contient ni récurrence ni convolution, pour que le modèle utilise le
+ordre de la séquence, nous devons injecter des informations sur la position relative ou absolue du
+jetons dans la séquence.À cette fin, nous ajoutons des "encodages positionnels" aux intégrations d'entrée au niveau
+bas des piles de codeurs et de décodeurs.Les codages positionnels ont le même modèle de dimension
+comme les plongements, afin que les deux puissent être additionnés.Il existe de nombreux choix d'encodages de position,
+appris et corrigé [9].
+Dans ce travail, nous utilisons des fonctions sinus et cosinus de différentes fréquences :
+PE(pos,2i) = sin(pos/100002i/dmodel)
+PE(pos,2i+1) = cos(pos/100002i/dmodèle)
+où pos est la position et i est la dimension.Autrement dit, chaque dimension du codage positionnel
+correspond à une sinusoïde.Les longueurs d'onde forment une progression géométrique de 2π à 10 000 · 2π.Nous
+J'ai choisi cette fonction car nous avons émis l'hypothèse qu'elle permettrait au modèle d'apprendre facilement à assister en
+positions relatives, puisque pour tout décalage fixe k, PEpos+k peut être représenté comme une fonction linéaire de
+PEpos.
+Nous avons également expérimenté l’utilisation de plongements positionnels appris [9] et avons constaté que les deux
+Les versions ont produit des résultats presque identiques (voir la ligne (E) du tableau 3).Nous avons choisi la version sinusoïdale
+car cela peut permettre au modèle d'extrapoler à des longueurs de séquence plus longues que celles rencontrées
+pendant la formation.
+4
+Pourquoi l'attention personnelle
+Dans cette section, nous comparons divers aspects des couches d’auto-attention aux niveaux récurrents et alambiqués.
+couches internationales couramment utilisées pour mapper une séquence de représentations de symboles de longueur variable
+(x1, ..., xn) à une autre séquence d'égale longueur (z1, ..., zn), avec xi, zi ∈Rd, tel qu'un
+couche dans un codeur ou un décodeur de transduction de séquence typique.En motivant notre utilisation de l'attention personnelle, nous
+considérons trois desiderata.
+L’un est la complexité informatique totale par couche.Une autre est la quantité de calculs qui peuvent
+être parallélisés, tel que mesuré par le nombre minimum d’opérations séquentielles requises.
+Le troisième est la longueur du chemin entre les dépendances à longue portée du réseau.Apprendre à long terme
+Les dépendances constituent un défi clé dans de nombreuses tâches de transduction de séquences.Un facteur clé affectant le
+La capacité à apprendre de telles dépendances est la longueur des chemins que doivent parcourir les signaux avant et arrière.
+parcourir dans le réseau.Plus ces chemins sont courts entre toute combinaison de positions dans l'entrée
+et les séquences de sortie, plus il est facile d'apprendre les dépendances à longue portée [12].C'est pourquoi nous comparons également
+la longueur de trajet maximale entre deux positions d'entrée et de sortie quelconques dans des réseaux composés de
+différents types de couches.
+Comme indiqué dans le tableau 1, une couche d'auto-attention relie toutes les positions avec un nombre constant de positions séquentielles.
+opérations exécutées, alors qu’une couche récurrente nécessite O(n) opérations séquentielles.En termes de
+complexité informatique, les couches d'auto-attention sont plus rapides que les couches récurrentes lorsque la séquence
+6
+
+la longueur n est inférieure à la dimensionnalité de la représentation d, ce qui est le plus souvent le cas avec
+représentations de phrases utilisées par les modèles de pointe dans les traductions automatiques, telles que les mots
+[38] et représentations par paires d'octets [31].Améliorer les performances de calcul pour les tâches impliquant
+séquences très longues, l’auto-attention pourrait se limiter à considérer uniquement un voisinage de taille r dans
+la séquence d’entrée centrée autour de la position de sortie respective.Cela augmenterait le maximum
+longueur du chemin vers O(n/r).Nous prévoyons d’approfondir cette approche dans de futurs travaux.
+Une seule couche convolutive avec une largeur de noyau k < n ne connecte pas toutes les paires d'entrée et de sortie
+postes.Cela nécessite une pile de couches convolutives O(n/k) dans le cas de noyaux contigus,
+ou O(logk(n)) dans le cas de convolutions dilatées [18], augmentant la longueur des chemins les plus longs
+entre deux positions quelconques du réseau.Les couches convolutives sont généralement plus chères que
+couches récurrentes, par un facteur k.Les convolutions séparables [6] diminuent cependant la complexité
+considérablement, à O(k · n · d + n · d2).Cependant, même avec k = n, la complexité d'un séparable
+la convolution est égale à la combinaison d'une couche d'auto-attention et d'une couche de rétroaction ponctuelle,
+l'approche que nous adoptons dans notre modèle.
+Comme avantage secondaire, l’attention personnelle pourrait produire des modèles plus interprétables.Nous inspectons les distributions d'attention
+à partir de nos modèles et présenter et discuter des exemples en annexe.Non seulement l'attention individuelle
+les chefs apprennent clairement à effectuer différentes tâches, beaucoup semblent présenter un comportement lié à la syntaxe
+et la structure sémantique des phrases.
+5
+Formation
+Cette section décrit le régime de formation de nos modèles.
+5.1
+Données de formation et traitement par lots
+Nous nous sommes entraînés sur l'ensemble de données standard anglais-allemand WMT 2014 composé d'environ 4,5 millions
+paires de phrases.Les phrases ont été codées à l'aide d'un codage par paire d'octets [3], qui a une source partagée.
+vocabulaire cible d'environ 37 000 jetons.Pour l’anglais-français, nous avons utilisé le WMT nettement plus grand
+Ensemble de données anglais-français de 2014 composé de 36 millions de phrases et de jetons divisés en un morceau de 32 000 mots
+vocabulaire [38].Les paires de phrases ont été regroupées par longueur de séquence approximative.Chaque formation
+Le lot contenait un ensemble de paires de phrases contenant environ 25 000 jetons source et 25 000
+jetons cibles.
+5.2
+Matériel et calendrier
+Nous avons formé nos modèles sur une machine équipée de 8 GPU NVIDIA P100.Pour nos modèles de base utilisant
+Pour les hyperparamètres décrits tout au long du document, chaque étape d'entraînement a duré environ 0,4 seconde.Nous
+formé les modèles de base pour un total de 100 000 étapes ou 12 heures.Pour nos gros modèles,(décrits sur la
+ligne du bas du tableau 3), le temps de pas était de 1,0 seconde.Les grands modèles ont été entraînés pour 300 000 pas
+(3,5 jours).
+5.3
+Optimiseur
+Nous avons utilisé l'optimiseur Adam [20] avec β1 = 0,9, β2 = 0,98 et ϵ = 10−9.Nous avons varié l'apprentissage
+tarif au cours de la formation, selon la formule :
+ltaux = d−0,5
+modèle · min(step_num−0.5, step_num · warmup_steps−1.5)
+(3)
+Cela correspond à augmenter le taux d'apprentissage de manière linéaire pour les premières étapes d'entraînement warmup_steps,
+et en le diminuant ensuite proportionnellement à la racine carrée inverse du numéro de pas.Nous avons utilisé
+warmup_steps = 4000.
+5.4
+Régularisation
+Nous employons trois types de régularisation lors de la formation :
+7
+
+Tableau 2 : Le Transformer obtient de meilleurs scores BLEU que les modèles de pointe précédents sur le
+Tests newstest2014 de l'anglais vers l'allemand et de l'anglais vers le français à une fraction du coût de la formation.
+Modèle
+BLEU
+Coût de la formation (FLOP)
+FR-DE
+EN-FR
+FR-DE
+EN-FR
+OctetNet [18]
+23h75
+Deep-Att + PosUnk [39]
+39.2
+1,0 · 1020
+GNMT + RL [38]
+24.6
+39,92
+2.3 · 1019
+1,4 · 1020
+ConvS2S [9]
+25.16
+40.46
+9.6 · 1018
+1,5 · 1020
+Ministère de l'Environnement [32]
+26.03
+40.56
+2,0 · 1019
+1.2 · 1020
+Ensemble Deep-Att + PosUnk [39]
+40.4
+8,0 · 1020
+Ensemble GNMT + RL [38]
+26h30
+41.16
+1,8 · 1020
+1.1 · 1021
+Ensemble ConvS2S [9]
+26.36
+41.29
+7.7 · 1019
+1.2 · 1021
+Transformateur (modèle de base)
+27.3
+38.1
+3.3 · 1018
+Transformateur (grand)
+28.4
+41,8
+2.3 · 1019
+Abandon résiduel
+Nous appliquons le dropout [33] à la sortie de chaque sous-couche, avant qu'elle ne soit ajoutée à la
+entrée de sous-couche et normalisée.De plus, nous appliquons la suppression aux sommes des plongements et des
+codages de position dans les piles de codeurs et de décodeurs.Pour le modèle de base, nous utilisons un taux de
+Pdrop = 0,1.
+Lissage des étiquettes
+Pendant la formation, nous avons utilisé un lissage d'étiquettes de valeur ϵls = 0,1 [36].Ceci
+cela fait mal à la perplexité, car le modèle apprend à être plus incertain, mais améliore la précision et le score BLEU.
+6
+Résultats
+6.1
+Traduction automatique
+Dans le cadre de la tâche de traduction de l'anglais vers l'allemand du WMT 2014, le grand modèle de transformateur (Transformer (big)
+dans le tableau 2) surpasse de plus de 2,0 les meilleurs modèles rapportés précédemment (y compris les ensembles).
+BLEU, établissant un nouveau score BLEU de pointe de 28,4.La configuration de ce modèle est
+répertoriés dans la dernière ligne du tableau 3. La formation a duré 3,5 jours sur 8 GPU P100.Même notre modèle de base
+surpasse tous les modèles et ensembles précédemment publiés, à une fraction du coût de formation de l'un des
+les modèles concurrents.
+Lors de la tâche de traduction anglais-français du WMT 2014, notre grand modèle obtient un score BLEU de 41,0,
+surpassant tous les modèles uniques publiés précédemment, à moins d'un quart du coût de formation du
+modèle de pointe précédent.Le (grand) modèle Transformer formé pour l'anglais vers le français est utilisé
+taux d'abandon Pdrop = 0,1, au lieu de 0,3.
+Pour les modèles de base, nous avons utilisé un modèle unique obtenu en faisant la moyenne des 5 derniers points de contrôle, ce qui
+ont été écrits à intervalles de 10 minutes.Pour les gros modèles, nous avons fait la moyenne des 20 derniers points de contrôle.Nous
+utilisé la recherche de faisceau avec une taille de faisceau de 4 et une pénalité de longueur α = 0,6 [38].Ces hyperparamètres
+ont été choisis après expérimentation sur le plateau de développement.Nous définissons la longueur maximale de sortie pendant
+inférence à la longueur d'entrée + 50, mais terminez tôt lorsque cela est possible [38].
+Le tableau 2 résume nos résultats et compare notre qualité de traduction et nos coûts de formation à d'autres modèles.
+architectures de la littérature.Nous estimons le nombre d'opérations en virgule flottante utilisées pour entraîner un
+modèle en multipliant le temps de formation, le nombre de GPU utilisés et une estimation du temps soutenu
+capacité en virgule flottante simple précision de chaque GPU 5.
+6.2
+Variations du modèle
+Pour évaluer l'importance des différents composants du Transformateur, nous avons varié notre modèle de base
+de différentes manières, en mesurant l'évolution des performances de la traduction de l'anglais vers l'allemand sur le
+5Nous avons utilisé des valeurs de 2,8, 3,7, 6,0 et 9,5 TFLOPS pour K80, K40, M40 et P100, respectivement.
+8
+
+Tableau 3 : Variations sur l'architecture du Transformer.Les valeurs non répertoriées sont identiques à celles de la base
+modèle.Tous les indicateurs figurent dans l'ensemble de développement de traduction de l'anglais vers l'allemand, newstest2013.Inscrit
+les perplexités sont par mot, selon notre codage par paire d'octets, et ne doivent pas être comparées à
+perplexités par mot.
+N
+modèle
+dff
+h
+n'importe quoi
+dv
+Pdrop
+ϵls
+former
+PPL
+BLEU
+paramètres
+étapes
+(développement)
+(développement)
+×106
+base
+6
+512
+2048
+8
+64
+64
+0,1
+0,1
+100K
+4,92
+25,8
+65
+(UNE)
+1
+512
+512
+5.29
+24.9
+4
+128
+128
+5h00
+25,5
+16
+32
+32
+4.91
+25,8
+32
+16
+16
+5.01
+25.4
+(B)
+16
+5.16
+25.1
+58
+32
+5.01
+25.4
+60
+(C)
+2
+6.11
+23,7
+36
+4
+5.19
+25.3
+50
+8
+4,88
+25,5
+80
+256
+32
+32
+5,75
+24,5
+28
+1024
+128
+128
+4,66
+26,0
+168
+1024
+5.12
+25.4
+53
+4096
+4,75
+26.2
+90
+(D)
+0,0
+5,77
+24.6
+0,2
+4,95
+25,5
+0,0
+4,67
+25.3
+0,2
+5.47
+25,7
+(E)
+intégration positionnelle au lieu de sinusoïdes
+4,92
+25,7
+grand
+6
+1024
+4096
+16
+0,3
+300K
+4.33
+26.4
+213
+ensemble de développement, newstest2013.Nous avons utilisé la recherche de faisceaux comme décrit dans la section précédente, mais aucun
+moyenne des points de contrôle.Nous présentons ces résultats dans le tableau 3.
+Dans les lignes du tableau 3 (A), nous faisons varier le nombre de têtes d'attention et les dimensions de la clé d'attention et de la valeur,
+en gardant la quantité de calcul constante, comme décrit dans la section 3.2.2.Bien qu'à une seule tête
+attention c'est 0,9 BLEU pire que le meilleur réglage, la qualité baisse aussi avec trop de têtes.
+Dans les lignes du tableau 3 (B), nous observons que la réduction de la taille de la clé d'attention dk nuit à la qualité du modèle.Ceci
+suggère que déterminer la compatibilité n'est pas facile et qu'une compatibilité plus sophistiquée
+fonction que le produit scalaire peut être bénéfique.Nous observons en outre dans les lignes (C) et (D) que, comme prévu,
+les modèles plus grands sont meilleurs et l'abandon est très utile pour éviter un ajustement excessif.Dans la rangée (E) nous remplaçons notre
+codage positionnel sinusoïdal avec des intégrations positionnelles apprises [9], et observez des
+résultats au modèle de base.
+6.3
+Analyse des circonscriptions anglaises
+Pour évaluer si le Transformer peut se généraliser à d'autres tâches, nous avons effectué des expériences en anglais.
+analyse de circonscription.Cette tâche présente des défis spécifiques : la production est soumise à de fortes contraintes structurelles.
+contraintes et est nettement plus long que l’entrée.De plus, séquence à séquence RNN
+les modèles n’ont pas été en mesure d’atteindre des résultats de pointe dans les régimes de petites données [37].
+Nous avons formé un transformateur à 4 couches avec dmodel = 1024 dans la partie du Wall Street Journal (WSJ) du
+Penn Treebank [25], environ 40 000 phrases d'entraînement.Nous l'avons également formé dans un cadre semi-supervisé,
+en utilisant les plus grands corpus à haute confiance et BerkleyParser avec environ 17 millions de phrases
+[37].Nous avons utilisé un vocabulaire de 16 000 jetons pour le paramètre WSJ uniquement et un vocabulaire de 32 000 jetons.
+pour le milieu semi-supervisé.
+Nous avons effectué seulement un petit nombre d'expériences pour sélectionner les abandons, à la fois attentionnels et résiduels.
+(section 5.4), taux d'apprentissage et taille du faisceau sur l'ensemble de développement de la section 22, tous les autres paramètres
+est resté inchangé par rapport au modèle de traduction de base de l’anglais vers l’allemand.Lors de l'inférence, nous
+9
+
+Tableau 4 : Le Transformer se généralise bien à l'analyse des circonscriptions anglaises (les résultats se trouvent dans la section 23).
+du WSJ)
+Analyseur
+Formation
+WSJ23 F1
+Vinyals & Kaiser el al.(2014) [37]
+WSJ uniquement, discriminant
+88,3
+Petrov et coll.(2006) [29]
+WSJ uniquement, discriminant
+90,4
+Zhu et coll.(2013) [40]
+WSJ uniquement, discriminant
+90,4
+Dyer et coll.(2016) [8]
+WSJ uniquement, discriminant
+91,7
+Transformateur (4 couches)
+WSJ uniquement, discriminant
+91,3
+Zhu et coll.(2013) [40]
+semi-supervisé
+91,3
+Huang et Harper (2009) [14]
+semi-supervisé
+91,3
+McClosky et coll.(2006) [26]
+semi-supervisé
+92.1
+Vinyals & Kaiser el al.(2014) [37]
+semi-supervisé
+92.1
+Transformateur (4 couches)
+semi-supervisé
+92,7
+Luong et coll.(2015) [23]
+multitâche
+93,0
+Dyer et coll.(2016) [8]
+génératif
+93,3
+augmenté la longueur de sortie maximale à la longueur d'entrée + 300. Nous avons utilisé une taille de faisceau de 21 et α = 0,3
+pour le WSJ uniquement et le cadre semi-supervisé.
+Nos résultats dans le tableau 4 montrent que malgré le manque de réglage spécifique à la tâche, notre modèle fonctionne sur-
+étonnamment bien, donnant de meilleurs résultats que tous les modèles rapportés précédemment, à l'exception du
+Grammaire récurrente des réseaux neuronaux [8].
+Contrairement aux modèles séquence à séquence RNN [37], le Transformer surpasse le modèle Berkeley-
+Analyseur [29] même lors d'une formation uniquement sur l'ensemble de formation WSJ de 40 000 phrases.
+7
+Conclusion
+Dans ce travail, nous avons présenté le Transformer, le premier modèle de transduction de séquence entièrement basé sur
+attention, en remplaçant les couches récurrentes les plus couramment utilisées dans les architectures codeurs-décodeurs par
+auto-attention à plusieurs têtes.
+Pour les tâches de traduction, le Transformer peut être entraîné beaucoup plus rapidement que les architectures basées sur
+sur des couches récurrentes ou convolutives.Sur WMT 2014 (anglais vers allemand) et WMT 2014
+Tâches de traduction de l’anglais vers le français, nous atteignons un nouvel état de l’art.Dans la première tâche, notre meilleur
+Le modèle surpasse même tous les ensembles précédemment rapportés.
+Nous sommes enthousiasmés par l’avenir des modèles basés sur l’attention et prévoyons de les appliquer à d’autres tâches.Nous
+envisagez d'étendre le Transformer à des problèmes impliquant des modalités d'entrée et de sortie autres que le texte et
+étudier les mécanismes d'attention locaux et restreints pour gérer efficacement les entrées et les sorties importantes
+tels que les images, l'audio et la vidéo.Rendre la génération moins séquentielle est un autre de nos objectifs de recherche.
+Le code que nous avons utilisé pour entraîner et évaluer nos modèles est disponible sur https://github.com/
+tensorflow/tensor2tensor.
+Remerciements
+Nous remercions Nal Kalchbrenner et Stephan Gouws pour leur travail fructueux
+commentaires, corrections et inspiration.
+Références
+[1] Jimmy Lei Ba, Jamie Ryan Kiros et Geoffrey E Hinton.Normalisation des couches.préimpression arXiv
+arXiv : 1607.06450, 2016.
+[2] Dzmitry Bahdanau, Kyunghyun Cho et Yoshua Bengio.Traduction automatique neuronale par conjointement
+apprendre à aligner et à traduire.CoRR, abs/1409.0473, 2014.
+[3] Denny Britz, Anna Goldie, Minh-Thang Luong et Quoc V. Le.Exploration massive des neurones
+architectures de traduction automatique.CoRR, abs/1703.03906, 2017.
+[4] Jianpeng Cheng, Li Dong et Mirella Lapata.Réseaux de mémoire à long terme et à court terme pour les machines
+lecture.Préimpression arXiv arXiv : 1601.06733, 2016.
+10
+
+[5] Kyunghyun Cho, Bart van Merrienboer, Caglar Gulcehre, Fethi Bougares, Holger Schwenk,
+et Yoshua Bengio.Apprentissage des représentations de phrases à l'aide du codeur-décodeur rnn à des fins statistiques
+traduction automatique.CoRR, abs/1406.1078, 2014.
+[6] François Chollet.Xception : apprentissage profond avec des convolutions séparables en profondeur.arXiv
+préimpression arXiv : 1610.02357, 2016.
+[7] Junyoung Chung, Çaglar Gülçehre, Kyunghyun Cho et Yoshua Bengio.Évaluation empirique
+de réseaux de neurones récurrents fermés sur la modélisation de séquences.CoRR, abs/1412.3555, 2014.
+[8] Chris Dyer, Adhiguna Kuncoro, Miguel Ballesteros et Noah A. Smith.Neural récurrent
+grammaires de réseau.Dans Proc.de la NAACL, 2016.
+[9] Jonas Gehring, Michael Auli, David Grangier, Denis Yarats et Yann N. Dauphin.Convolu-
+séquence logique à l’apprentissage séquentiel.Préimpression arXiv arXiv:1705.03122v2, 2017.
+[10] Alex Graves.
+Générer des séquences avec des réseaux de neurones récurrents.
+préimpression arXiv
+arXiv : 1308.0850, 2013.
+[11] Kaiming He, Xiangyu Zhang, Shaoqing Ren et Jian Sun.Apprentissage résiduel profond pour l'im-
+reconnaissance de l'âge.Dans les actes de la conférence IEEE sur la vision et les modèles par ordinateur
+Reconnaissance, pages 770-778, 2016.
+[12] Sepp Hochreiter, Yoshua Bengio, Paolo Frasconi et Jürgen Schmidhuber.Flux graduel dans
+filets récurrents : la difficulté d’apprendre les dépendances à long terme, 2001.
+[13] Sepp Hochreiter et Jürgen Schmidhuber.Mémoire à long terme.Calcul neuronal,
+9(8):1735-1780, 1997.
+[14] Zhongqiang Huang et Mary Harper.Grammaires PCFG d'auto-apprentissage avec annotations latentes
+à travers les langues.Dans les actes de la conférence 2009 sur les méthodes empiriques en sciences naturelles
+Traitement du langage, pages 832 à 841.ACL, août 2009.
+[15] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, Noam Shazeer et Yonghui Wu.Explorer
+les limites de la modélisation du langage.Préimpression arXiv arXiv : 1602.02410, 2016.
+[16] Lukasz Kaiser et Samy Bengio.La mémoire active peut-elle remplacer l’attention ?Dans Avancées neuronales
+Systèmes de traitement de l’information (NIPS), 2016.
+[17] Lukasz Kaiser et Ilya Sutskever.Les GPU neuronaux apprennent des algorithmes.En conférence internationale
+sur les représentations d’apprentissage (ICLR), 2016.
+[18] Nal Kalchbrenner, Lasse Espeholt, Karen Simonyan, Aaron van den Oord, Alex Graves et Ko-
+Ray Kavukcuoglu.Traduction automatique neuronale en temps linéaire.préimpression arXiv arXiv:1610.10099v2,
+2017.
+[19] Yoon Kim, Carl Denton, Luong Hoang et Alexander M. Rush.Réseaux d'attention structurés.
+Dans Conférence internationale sur les représentations de l'apprentissage, 2017.
+[20] Diederik Kingma et Jimmy Ba.Adam : Une méthode d'optimisation stochastique.Dans ICLR, 2015.
+[21] Oleksii Kuchaiev et Boris Ginsburg.Astuces de factorisation pour les réseaux LSTM.préimpression arXiv
+arXiv : 1703.10722, 2017.
+[22] Zhouhan Lin, Minwei Feng, Cicero Nogueira dos Santos, Mo Yu, Bing Xiang, Bowen
+Zhou et Yoshua Bengio.Une phrase structurée et attentive à soi.préimpression arXiv
+arXiv : 1703.03130, 2017.
+[23] Minh-Thang Luong, Quoc V. Le, Ilya Sutskever, Oriol Vinyals et Lukasz Kaiser.Multitâche
+séquence à séquence d’apprentissage.Préimpression arXiv arXiv : 1511.06114, 2015.
+[24] Minh-Thang Luong, Hieu Pham et Christopher D. Manning.Approches efficaces de l'attention-
+basée sur la traduction automatique neuronale.Préimpression arXiv arXiv : 1508.04025, 2015.
+11
+
+[25] Mitchell P Marcus, Mary Ann Marcinkiewicz et Beatrice Santorini.Construire un grand annoté
+corpus d'anglais : The Penn Treebank.Linguistique computationnelle, 19(2):313-330, 1993.
+[26] David McClosky, Eugene Charniak et Mark Johnson.Auto-formation efficace pour l'analyse.Dans
+Actes de la Conférence sur les technologies du langage humain de la NAACL, Conférence principale,
+pages 152 à 159.ACL, juin 2006.
+[27] Ankur Parikh, Oscar Täckström, Dipanjan Das et Jakob Uszkoreit.Une attention décomposable
+modèle.Dans Méthodes empiriques de traitement du langage naturel, 2016.
+[28] Romain Paulus, Caiming Xiong et Richard Socher.Un modèle profondément renforcé pour l'abstraction
+résumé.Préimpression arXiv arXiv : 1705.04304, 2017.
+[29] Slav Petrov, Léon Barrett, Romain Thibaux et Dan Klein.Apprentissage précis, compact,
+et une annotation d'arbre interprétable.Dans les actes de la 21e Conférence internationale sur
+Linguistique computationnelle et 44e réunion annuelle de l'ACL, pages 433 à 440.ACL, juillet
+2006.
+[30] Ofir Press et Lior Wolf.Utiliser l'intégration de sortie pour améliorer les modèles de langage.arXiv
+préimpression arXiv : 1608.05859, 2016.
+[31] Rico Sennrich, Barry Haddow et Alexandra Birch.Traduction automatique neuronale de mots rares
+avec des unités de sous-mots.Préimpression arXiv arXiv : 1508.07909, 2015.
+[32] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton,
+et Jeff Dean.Réseaux de neurones incroyablement grands : le mélange d'experts aux accès clairsemés
+couche.Préimpression arXiv arXiv : 1701.06538, 2017.
+[33] Nitish Srivastava, Geoffrey E Hinton, Alex Krizhevsky, Ilya Sutskever et Ruslan Salakhutdi-
+nov.Abandon : un moyen simple d'empêcher le surapprentissage des réseaux de neurones.Journal de la machine
+Recherche sur l'apprentissage, 15(1):1929-1958, 2014.
+[34] Sainbayar Sukhbaatar, Arthur Szlam, Jason Weston et Rob Fergus.Mémoire de bout en bout
+réseaux.Dans C. Cortes, N. D. Lawrence, D. D. Lee, M. Sugiyama et R. Garnett, éditeurs,
+Avancées dans les systèmes de traitement de l'information neuronale 28, pages 2440-2448.Associés Curran,
+Inc., 2015.
+[35] Ilya Sutskever, Oriol Vinyals et Quoc VV Le.Séquence pour séquencer l'apprentissage avec neuronal
+réseaux.Dans Advances in Neural Information Processing Systems, pages 3104-3112, 2014.
+[36] Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jonathon Shlens et Zbigniew Wojna.
+Repenser l'architecture initiale de la vision par ordinateur.CoRR, abs/1512.00567, 2015.
+[37] Vinyals & Kaiser, Koo, Petrov, Sutskever et Hinton.La grammaire comme langue étrangère.Dans
+Avancées dans les systèmes de traitement de l'information neuronale, 2015.
+[38] Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang
+Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey et al.La machine neuronale de Google
+système de traduction : combler le fossé entre la traduction humaine et automatique.préimpression arXiv
+arXiv : 1609.08144, 2016.
+[39] Jie Zhou, Ying Cao, Xuguang Wang, Peng Li et Wei Xu.Modèles profondément récurrents avec
+connexions rapides pour la traduction automatique neuronale.CoRR, abs/1606.04199, 2016.
+[40] Muhua Zhu, Yue Zhang, Wenliang Chen, Min Zhang et Jingbo Zhu.Rapide et précis
+analyse des constituants par réduction de décalage.Dans Actes de la 51e réunion annuelle de l'ACL (Volume
+1 : Articles longs), pages 434 à 443.ACL, août 2013.
+12
+
+Visualisations d'attention
+Il
+est
+dans
+ceci
+esprit
+que
+un
+majorité
+de
+Américain
+gouvernements
+avoir
+passé
+nouveau
+les lois
+depuis
+2009
+faire
+le
+inscription
+ou
+voter
+processus
+plus
+difficile
+.
+<EOS>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+Il
+est
+dans
+ceci
+esprit
+que
+un
+majorité
+de
+Américain
+gouvernements
+avoir
+passé
+nouveau
+les lois
+depuis
+2009
+faire
+le
+inscription
+ou
+voter
+processus
+plus
+difficile
+.
+<EOS>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+<bloc-notes>
+Figure 3 : Un exemple du mécanisme d’attention suite à des dépendances à distance dans le
+encoder l'auto-attention dans la couche 5 sur 6. De nombreuses têtes d'attention s'occupent d'une dépendance lointaine de
+le verbe « faire », complétant la phrase « rendre... plus difficile ».Attentions ici affichées uniquement pour
+le mot « faire ».Différentes couleurs représentent différentes têtes.Mieux vu en couleur.
+13
+
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Figure 4 : Deux têtes d'attention, également dans la couche 5 sur 6, apparemment impliquées dans la résolution de l'anaphore.Haut :
+Attentions complètes pour la tête 5. En bas : Attentions isolées du simple mot « c'est » pour les têtes d'attention 5
+et 6. Notez que les attentions sont très vives pour ce mot.
+14
+
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Le
+Loi
+va
+jamais
+être
+parfait
+,
+mais
+c'est
+demande
+devrait
+être
+juste
+-
+ceci
+est
+quoi
+nous
+sont
+manquant
+,
+dans
+mon
+avis
+.
+<EOS>
+<bloc-notes>
+Figure 5 : De nombreuses têtes d'attention présentent un comportement qui semble lié à la structure du
+phrase.Nous donnons ci-dessus deux exemples de ce type, provenant de deux têtes différentes de l'auto-attention du codeur
+au niveau 5 sur 6. Les chefs ont clairement appris à effectuer différentes tâches.
+15
+
