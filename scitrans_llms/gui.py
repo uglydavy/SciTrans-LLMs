@@ -28,16 +28,15 @@ def launch(port: int = 7860, share: bool = False):
     
     class State:
         dark_mode = True
-        # Prefer the robust offline dictionary backend as GUI default;
-        # users can still select "free" or LLM engines explicitly.
-        default_engine = 'dictionary'
-        default_masking = True
-        default_reranking = True  # Reranking mandatory
-        quality_passes = 1
-        context_window = 5
-        translate_tables = True  # Preserve by default
-        translate_figures = True  # Preserve by default
-        preserve_structure = True
+        # Use free backend for better quality by default
+        default_engine = 'free'
+        default_masking = True  # ALWAYS enable masking
+        default_reranking = True  # ALWAYS enable reranking
+        quality_passes = 2  # Multiple passes for better quality
+        context_window = 8  # Larger context for better coherence
+        translate_tables = True  # ALWAYS translate tables
+        translate_figures = True  # ALWAYS translate figures
+        preserve_structure = True  # ALWAYS preserve structure
         uploaded_pdf_path = None
         uploaded_pdf_name = None
         translated_pdf_path = None
@@ -93,45 +92,172 @@ def launch(port: int = 7860, share: bool = False):
             return None
     
     CSS = """<style>
-:root { --bg-card: rgba(30,35,45,0.95); --border: rgba(100,100,120,0.3); }
-html, body { margin:0; padding:0; overflow:hidden!important; height:100vh!important; }
-.nicegui-content, .q-page-container { height:calc(100vh - 48px)!important; overflow:hidden!important; }
-.q-tab-panels, .q-tab-panel { height:100%!important; overflow:hidden!important; padding:0!important; }
-.main-row { display:flex; width:100%; height:calc(100vh - 110px)!important; padding:4px 8px; gap:8px; box-sizing:border-box; overflow:hidden; }
-.panel { flex:1; max-width:50%; height:100%; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:4px; min-height:0; }
-.panel::-webkit-scrollbar { width:4px; } .panel::-webkit-scrollbar-thumb { background:#555; border-radius:2px; }
-.card { background:var(--bg-card); border:1px solid var(--border); border-radius:4px; padding:6px; flex-shrink:0; }
-.card-title { font-weight:600; font-size:10px; margin-bottom:3px; border-bottom:1px solid var(--border); padding-bottom:2px; }
-.upload-zone { border:2px dashed var(--border); border-radius:4px; padding:8px; text-align:center; cursor:pointer; transition:all 0.2s; min-height:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-.upload-zone:hover { border-color:#6366f1; background:rgba(99,102,241,0.05); }
-.preview-card { flex:1!important; display:flex; flex-direction:column; min-height:0; overflow:hidden; max-height:100%; }
+/* ========== ROOT VARIABLES ========== */
+:root { 
+  --bg-card: rgba(30,35,45,0.95); 
+  --border: rgba(100,100,120,0.3); 
+  --font-base: 15px;
+  --font-title: 16px;
+  --font-label: 14px;
+  --btn-height: 44px;
+  --card-padding: 16px;
+  --gap: 12px;
+}
+
+/* ========== BASE LAYOUT ========== */
+html, body { 
+  margin:0; 
+  padding:0; 
+  overflow-x:hidden!important; 
+  height:100vh!important; 
+  font-size:var(--font-base);
+}
+.nicegui-content, .q-page-container { 
+  height:calc(100vh - 56px)!important; 
+  overflow-x:hidden!important; 
+}
+.q-tab-panels { 
+  height:100%!important; 
+  overflow:hidden!important; 
+  padding:0!important; 
+}
+.q-tab-panel { 
+  height:100%!important; 
+  overflow-y:auto!important; 
+  overflow-x:hidden!important;
+  padding:0!important; 
+}
+
+/* ========== MAIN LAYOUT ========== */
+.main-row { 
+  display:flex; 
+  width:100%; 
+  min-height:calc(100vh - 110px); 
+  padding:var(--gap); 
+  gap:var(--gap); 
+  box-sizing:border-box; 
+}
+
+/* ========== PANELS ========== */
+.panel { 
+  flex:1; 
+  display:flex; 
+  flex-direction:column; 
+  gap:var(--gap); 
+  min-width:0; 
+  max-width:50%;
+}
+.panel::-webkit-scrollbar { width:8px; } 
+.panel::-webkit-scrollbar-thumb { background:#555; border-radius:4px; }
+
+/* ========== CARDS ========== */
+.card { 
+  background:var(--bg-card); 
+  border:1px solid var(--border); 
+  border-radius:8px; 
+  padding:var(--card-padding); 
+  flex-shrink:0; 
+}
+.card-title { 
+  font-weight:600; 
+  font-size:var(--font-title); 
+  margin-bottom:12px; 
+  border-bottom:1px solid var(--border); 
+  padding-bottom:8px; 
+  color:#fff;
+}
+
+/* ========== UPLOAD ZONE ========== */
+.upload-zone { 
+  border:3px dashed var(--border); 
+  border-radius:8px; 
+  padding:32px; 
+  text-align:center; 
+  cursor:pointer; 
+  transition:all 0.3s; 
+  min-height:120px; 
+  display:flex; 
+  flex-direction:column; 
+  align-items:center; 
+  justify-content:center;
+  font-size:var(--font-label);
+}
+.upload-zone:hover { 
+  border-color:#6366f1; 
+  background:rgba(99,102,241,0.1); 
+  transform:scale(1.02);
+}
+
+/* ========== PREVIEW ========== */
+.preview-card { 
+  flex:1!important; 
+  display:flex; 
+  flex-direction:column; 
+  min-height:0; 
+  overflow:hidden; 
+}
 .preview-area { 
   flex:1; 
   display:flex; 
   align-items:center; 
   justify-content:center; 
-  overflow:auto;  /* Allow scrolling if needed */
+  overflow:auto;
   background:#1a1a2e; 
-  min-height:300px; 
-  max-height:calc(100vh - 380px);  /* Leave room for controls + nav */
-  border-radius:4px; 
+  min-height:500px; 
+  border-radius:8px; 
   position:relative;
 }
 .preview-area img { 
-  max-width:95%!important; 
-  max-height:95%!important; 
+  max-width:100%!important; 
+  max-height:100%!important; 
   width:auto!important;
   height:auto!important;
   object-fit:contain!important; 
   display:block;
   margin:auto;
 }
-.action-row { display:flex; gap:4px; margin-top:4px; }
-.action-row .q-btn { flex:1; font-size:10px!important; padding:4px 8px!important; }
-body.body--light { --bg-card: rgba(255,255,255,0.98); --border: rgba(0,0,0,0.12); }
+
+/* ========== BUTTONS & INPUTS ========== */
+.q-btn { 
+  min-height:var(--btn-height)!important; 
+  font-size:var(--font-label)!important; 
+  font-weight:500!important;
+  padding:0 20px!important;
+}
+.action-row { 
+  display:flex; 
+  gap:var(--gap); 
+  margin-top:var(--gap); 
+}
+.action-row .q-btn { 
+  flex:1;
+}
+input, select, textarea, .q-field { 
+  font-size:var(--font-label)!important;
+}
+
+/* ========== PAGINATION ========== */
+.pagination-btn { 
+  min-width:50px!important;
+  min-height:50px!important;
+  font-size:18px!important;
+}
+
+/* ========== LIGHT MODE ========== */
+body.body--light { 
+  --bg-card: rgba(255,255,255,0.98); 
+  --border: rgba(0,0,0,0.12); 
+}
 body.body--light .q-header { background:#4f46e5!important; }
 body.body--light .q-tab-panels { background:#f5f5f5!important; }
 body.body--light .preview-area { background:#e8e8e8; }
+body.body--light .card-title { color:#000; }
+
+/* ========== SCROLLBAR STYLING ========== */
+*::-webkit-scrollbar { width:10px; height:10px; }
+*::-webkit-scrollbar-track { background:#1a1a2e; }
+*::-webkit-scrollbar-thumb { background:#555; border-radius:5px; }
+*::-webkit-scrollbar-thumb:hover { background:#777; }
 </style>"""
     
     @ui.page('/')
