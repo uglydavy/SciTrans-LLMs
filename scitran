@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+"""Wrapper script for SciTrans-LLMs CLI"""
+import sys
+import os
+
+# Add current directory to path to ensure package can be imported
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from scitran_llms.cli import app
+import typer
+
+if __name__ == "__main__":
+    app()
