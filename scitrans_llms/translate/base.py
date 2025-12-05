@@ -224,19 +224,88 @@ class DummyTranslator(Translator):
 
 
 class DictionaryTranslator(Translator):
-    """Offline translator using glossary lookups and basic word translation.
+    """Offline translator using glossary lookups, phrase matching, and word translation.
     
-    This translator:
-    1. Applies glossary term replacements (priority)
-    2. Uses a built-in dictionary of common English→French words
-    3. Optionally augments that dictionary from a local corpus-trained lexicon
-    4. Leaves truly unknown words unchanged
+    This translator implements a multi-level translation strategy:
+    1. Glossary term replacements (highest priority, multi-word phrases)
+    2. Common phrase translations (2-4 word phrases)
+    3. Corpus-trained lexicon (if available from ~/.scitrans/dictionaries/)
+    4. Built-in dictionary of common English→French words
+    5. Unknown words are left unchanged
     
-    The corpus-trained lexicon is **local-only** and loaded from
-        ~/.scitrans/dictionaries/{source_lang}_{target_lang}.tsv
-    if present. This file can be created via `scitrans corpus build-dict`.
-    No downloads or network calls are triggered here.
+    Thesis Contribution #1: Terminology-constrained translation
+    with phrase-aware matching for better quality offline translation.
     """
+    
+    # Common multi-word phrases (sorted by length for priority matching)
+    PHRASE_DICT = {
+        # Academic phrases (4+ words)
+        'state of the art': "état de l'art",
+        'as a result of': 'en raison de',
+        'in order to': 'afin de',
+        'on the other hand': "d'autre part",
+        'in the context of': 'dans le contexte de',
+        'with respect to': 'par rapport à',
+        'in terms of': 'en termes de',
+        'according to the': 'selon le',
+        'as shown in': 'comme montré dans',
+        'as described in': 'comme décrit dans',
+        'as mentioned above': 'comme mentionné ci-dessus',
+        'it is important to': 'il est important de',
+        'it should be noted': 'il convient de noter',
+        
+        # ML/AI phrases (3-4 words)
+        'neural network': 'réseau de neurones',
+        'deep learning': 'apprentissage profond',
+        'machine learning': 'apprentissage automatique',
+        'natural language processing': 'traitement automatique du langage naturel',
+        'large language model': 'grand modèle de langue',
+        'attention mechanism': "mécanisme d'attention",
+        'gradient descent': 'descente de gradient',
+        'loss function': 'fonction de perte',
+        'learning rate': "taux d'apprentissage",
+        'batch size': 'taille de lot',
+        'training data': "données d'entraînement",
+        'test data': 'données de test',
+        'feature extraction': 'extraction de caractéristiques',
+        'transfer learning': 'apprentissage par transfert',
+        'fine tuning': 'ajustement fin',
+        'pre trained': 'pré-entraîné',
+        'cross validation': 'validation croisée',
+        'confusion matrix': 'matrice de confusion',
+        'random forest': 'forêt aléatoire',
+        'decision tree': 'arbre de décision',
+        'support vector machine': 'machine à vecteurs de support',
+        
+        # Scientific phrases (2-3 words)
+        'in vitro': 'in vitro',
+        'in vivo': 'in vivo',
+        'et al': 'et al.',
+        'per se': 'en soi',
+        'ad hoc': 'ad hoc',
+        'de novo': 'de novo',
+        'a priori': 'a priori',
+        'a posteriori': 'a posteriori',
+        'for example': 'par exemple',
+        'for instance': 'par exemple',
+        'such as': 'tel que',
+        'as well as': 'ainsi que',
+        'due to': 'en raison de',
+        'in addition': 'de plus',
+        'in contrast': 'en revanche',
+        'on average': 'en moyenne',
+        'at least': 'au moins',
+        'at most': 'au plus',
+        'so far': "jusqu'à présent",
+        'up to': "jusqu'à",
+        'based on': 'basé sur',
+        'according to': 'selon',
+        'related to': 'lié à',
+        'compared to': 'comparé à',
+        'similar to': 'similaire à',
+        'known as': 'connu sous le nom de',
+        'referred to as': 'désigné comme',
+    }
     
     # Extended built-in dictionary for common academic/scientific terms
     BASIC_DICT = {
@@ -254,6 +323,30 @@ class DictionaryTranslator(Translator):
         'has': 'a', 'had': 'avait', 'do': 'faire', 'does': 'fait',
         'will': 'va', 'would': 'serait', 'can': 'peut', 'could': 'pourrait',
         'should': 'devrait', 'may': 'peut', 'might': 'pourrait',
+        'use': 'utiliser', 'uses': 'utilise', 'used': 'utilisé',
+        'show': 'montrer', 'shows': 'montre', 'shown': 'montré',
+        'find': 'trouver', 'finds': 'trouve', 'found': 'trouvé',
+        'make': 'faire', 'makes': 'fait', 'made': 'fait',
+        'take': 'prendre', 'takes': 'prend', 'took': 'pris',
+        'give': 'donner', 'gives': 'donne', 'gave': 'donné',
+        'need': 'avoir besoin de', 'needs': 'a besoin de',
+        'provide': 'fournir', 'provides': 'fournit',
+        'achieve': 'atteindre', 'achieves': 'atteint',
+        'obtain': 'obtenir', 'obtains': 'obtient',
+        'present': 'présenter', 'presents': 'présente',
+        'propose': 'proposer', 'proposes': 'propose',
+        'describe': 'décrire', 'describes': 'décrit',
+        'define': 'définir', 'defines': 'définit',
+        'include': 'inclure', 'includes': 'inclut',
+        'require': 'nécessiter', 'requires': 'nécessite',
+        'allow': 'permettre', 'allows': 'permet',
+        'enable': 'permettre', 'enables': 'permet',
+        'consider': 'considérer', 'considers': 'considère',
+        'assume': 'supposer', 'assumes': 'suppose',
+        'improve': 'améliorer', 'improves': 'améliore',
+        'increase': 'augmenter', 'increases': 'augmente',
+        'decrease': 'diminuer', 'decreases': 'diminue',
+        'reduce': 'réduire', 'reduces': 'réduit',
         
         # Academic/research terms
         'study': 'étude', 'research': 'recherche', 'paper': 'article',
@@ -263,21 +356,36 @@ class DictionaryTranslator(Translator):
         'approach': 'approche', 'problem': 'problème', 'solution': 'solution',
         'performance': 'performance', 'accuracy': 'précision', 'error': 'erreur',
         'training': 'entraînement', 'testing': 'test', 'validation': 'validation',
+        'evaluation': 'évaluation', 'comparison': 'comparaison',
+        'improvement': 'amélioration', 'contribution': 'contribution',
+        'limitation': 'limitation', 'challenge': 'défi', 'issue': 'problème',
+        'framework': 'cadre', 'architecture': 'architecture',
+        'implementation': 'implémentation', 'application': 'application',
+        'algorithm': 'algorithme', 'technique': 'technique',
         
         # Technical/ML terms
         'machine': 'machine', 'learning': 'apprentissage', 'neural': 'neuronal',
         'network': 'réseau', 'deep': 'profond', 'layer': 'couche',
-        'algorithm': 'algorithme', 'function': 'fonction', 'parameter': 'paramètre',
-        'optimization': 'optimisation', 'training': 'entraînement',
+        'function': 'fonction', 'parameter': 'paramètre',
+        'optimization': 'optimisation',
         'prediction': 'prédiction', 'classification': 'classification',
         'regression': 'régression', 'feature': 'caractéristique',
         'input': 'entrée', 'output': 'sortie', 'weight': 'poids',
+        'embedding': 'plongement', 'encoder': 'encodeur', 'decoder': 'décodeur',
+        'token': 'jeton', 'sequence': 'séquence', 'context': 'contexte',
+        'attention': 'attention', 'transformer': 'transformeur',
         
         # Connectors & prepositions
         'and': 'et', 'or': 'ou', 'but': 'mais', 'with': 'avec',
         'without': 'sans', 'for': 'pour', 'from': 'de', 'to': 'à',
         'in': 'dans', 'on': 'sur', 'at': 'à', 'by': 'par',
         'of': 'de', 'as': 'comme', 'than': 'que', 'if': 'si',
+        'while': 'tandis que', 'whereas': 'alors que',
+        'although': 'bien que', 'because': 'parce que',
+        'since': 'depuis', 'until': "jusqu'à", 'during': 'pendant',
+        'through': 'à travers', 'between': 'entre', 'among': 'parmi',
+        'within': 'dans', 'across': 'à travers', 'along': 'le long de',
+        'against': 'contre', 'towards': 'vers', 'into': 'dans',
         
         # Adjectives
         'new': 'nouveau', 'old': 'ancien', 'good': 'bon', 'bad': 'mauvais',
@@ -286,12 +394,29 @@ class DictionaryTranslator(Translator):
         'important': 'important', 'significant': 'significatif', 'different': 'différent',
         'similar': 'similaire', 'same': 'même', 'other': 'autre', 'many': 'beaucoup',
         'more': 'plus', 'most': 'plus', 'less': 'moins', 'few': 'peu',
+        'various': 'divers', 'several': 'plusieurs', 'each': 'chaque',
+        'both': 'les deux', 'all': 'tous', 'any': 'tout',
+        'specific': 'spécifique', 'particular': 'particulier',
+        'general': 'général', 'common': 'commun', 'typical': 'typique',
+        'main': 'principal', 'key': 'clé', 'major': 'majeur', 'minor': 'mineur',
+        'previous': 'précédent', 'following': 'suivant', 'current': 'actuel',
+        'recent': 'récent', 'existing': 'existant', 'proposed': 'proposé',
+        'effective': 'efficace', 'efficient': 'efficient',
+        'optimal': 'optimal', 'robust': 'robuste', 'accurate': 'précis',
         
         # Adverbs
         'also': 'aussi', 'however': 'cependant', 'therefore': 'donc',
         'thus': 'ainsi', 'then': 'alors', 'now': 'maintenant', 'here': 'ici',
         'there': 'là', 'where': 'où', 'when': 'quand', 'how': 'comment',
         'why': 'pourquoi', 'very': 'très', 'well': 'bien', 'only': 'seulement',
+        'often': 'souvent', 'usually': 'généralement', 'typically': 'typiquement',
+        'mainly': 'principalement', 'especially': 'particulièrement',
+        'particularly': 'particulièrement', 'specifically': 'spécifiquement',
+        'generally': 'généralement', 'approximately': 'approximativement',
+        'significantly': 'significativement', 'respectively': 'respectivement',
+        'finally': 'finalement', 'additionally': 'de plus',
+        'furthermore': 'de plus', 'moreover': 'de plus',
+        'nevertheless': 'néanmoins', 'nonetheless': 'néanmoins',
         
         # Nouns
         'time': 'temps', 'year': 'année', 'way': 'manière', 'work': 'travail',
@@ -299,6 +424,12 @@ class DictionaryTranslator(Translator):
         'point': 'point', 'fact': 'fait', 'group': 'groupe', 'example': 'exemple',
         'information': 'information', 'question': 'question', 'process': 'processus',
         'section': 'section', 'figure': 'figure', 'table': 'tableau',
+        'equation': 'équation', 'formula': 'formule', 'expression': 'expression',
+        'value': 'valeur', 'variable': 'variable', 'constant': 'constante',
+        'factor': 'facteur', 'element': 'élément', 'component': 'composant',
+        'structure': 'structure', 'form': 'forme', 'type': 'type',
+        'class': 'classe', 'category': 'catégorie', 'set': 'ensemble',
+        'sample': 'échantillon', 'instance': 'instance', 'item': 'élément',
         
         # Questions
         'what': 'quoi', 'which': 'lequel', 'who': 'qui',
@@ -306,10 +437,12 @@ class DictionaryTranslator(Translator):
     
     def __init__(self, glossary: Glossary | None = None, source_lang: str = "en", target_lang: str = "fr"):
         self.glossary = glossary
+        self.source_lang = source_lang
+        self.target_lang = target_lang
         # Optional extra dictionary trained from parallel corpora.
-        # This is loaded lazily from ~/.scitrans/dictionaries/{src}_{tgt}.tsv if present
-        # and never triggers any downloads by itself.
         self.extra_dict: dict[str, str] = self._load_corpus_dictionary(source_lang, target_lang)
+        # Sort phrase dict by length (longest first) for priority matching
+        self._sorted_phrases = sorted(self.PHRASE_DICT.keys(), key=len, reverse=True)
 
     def _load_corpus_dictionary(self, source_lang: str, target_lang: str) -> dict[str, str]:
         """Load an optional extra dictionary built from parallel corpora.
@@ -365,8 +498,9 @@ class DictionaryTranslator(Translator):
         
         result = text
         terms_used = []
+        phrases_used = []
         
-        # Step 1: Apply glossary terms first (priority)
+        # Step 1: Apply glossary terms first (highest priority, multi-word)
         if glossary:
             entries = sorted(glossary.entries, key=lambda e: len(e.source), reverse=True)
             
@@ -383,7 +517,21 @@ class DictionaryTranslator(Translator):
                     result = pattern.sub(replace_with_case, result)
                     terms_used.append(entry.source)
         
-        # Step 2: Apply corpus-based dictionary first, then built-in dictionary
+        # Step 2: Apply phrase dictionary (multi-word phrases)
+        for phrase in self._sorted_phrases:
+            pattern = re.compile(rf'\b{re.escape(phrase)}\b', re.IGNORECASE)
+            if pattern.search(result):
+                target = self.PHRASE_DICT[phrase]
+                def replace_phrase(match):
+                    matched = match.group(0)
+                    t = target
+                    if matched[0].isupper():
+                        t = t[0].upper() + t[1:]
+                    return t
+                result = pattern.sub(replace_phrase, result)
+                phrases_used.append(phrase)
+        
+        # Step 3: Apply corpus-based dictionary, then built-in dictionary
         def replace_word(match):
             word = match.group(0)
             lower_word = word.lower()
@@ -412,7 +560,8 @@ class DictionaryTranslator(Translator):
             metadata={
                 "translator": self.name,
                 "glossary_terms": len(terms_used),
-                "method": "glossary+dictionary",
+                "phrases_translated": len(phrases_used),
+                "method": "glossary+phrases+dictionary",
                 "extra_dict_size": len(self.extra_dict),
             },
             glossary_terms_used=terms_used,

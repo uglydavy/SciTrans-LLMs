@@ -53,8 +53,54 @@ def restore_list_marker(indent: str, marker: str, translated_content: str) -> st
 def preserve_list_structure(source: str, translated: str) -> str:
     """Preserve list structure from source in translated text.
     
-    If source has a list marker, ensure the translated text keeps it.
+    If source has list markers, ensure the translated text keeps them.
+    Handles both single-line and multi-line text.
     """
+    # Handle multi-line text: process each line separately
+    source_lines = source.split('\n')
+    translated_lines = translated.split('\n')
+    
+    # If source has multiple lines with markers, try to restore them
+    if len(source_lines) > 1:
+        # Extract markers from source lines
+        source_markers = []
+        for line in source_lines:
+            indent, marker, _ = extract_list_marker(line)
+            source_markers.append((indent, marker))
+        
+        # Count how many source lines have markers
+        markers_count = sum(1 for _, m in source_markers if m)
+        
+        if markers_count > 0:
+            # Build result with markers restored
+            result_lines = []
+            marker_idx = 0
+            
+            for i, trans_line in enumerate(translated_lines):
+                trans_line = trans_line.strip()
+                if not trans_line:
+                    result_lines.append('')
+                    continue
+                
+                # Find next marker to apply
+                while marker_idx < len(source_markers):
+                    indent, marker = source_markers[marker_idx]
+                    marker_idx += 1
+                    if marker:
+                        # Check if translated line already has a marker
+                        _, existing_marker, content = extract_list_marker(trans_line)
+                        if existing_marker:
+                            result_lines.append(restore_list_marker(indent, marker, content))
+                        else:
+                            result_lines.append(restore_list_marker(indent, marker, trans_line))
+                        break
+                else:
+                    # No more markers, keep line as-is
+                    result_lines.append(trans_line)
+            
+            return '\n'.join(result_lines)
+    
+    # Single line handling
     indent, marker, _ = extract_list_marker(source)
     if marker:
         # Check if translated already has a marker
@@ -65,6 +111,7 @@ def preserve_list_structure(source: str, translated: str) -> str:
         else:
             # Add original marker
             return restore_list_marker(indent, marker, translated)
+    
     return translated
 
 
