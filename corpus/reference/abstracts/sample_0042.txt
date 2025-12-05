@@ -1,0 +1,5 @@
+Les avancées récentes en apprentissage automatique ont permis des progrès significatifs dans X. Ce travail propose un cadre pour X.
+
+Nous introduisons une nouvelle architecture composée de X. Le modèle est entraîné sur X en utilisant X.
+
+L'évaluation sur X montre que notre approche surpasse les méthodes existantes de 4%. Le code est disponible à X.

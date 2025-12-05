@@ -1,0 +1,5 @@
+Recent advances in natural language processing have enabled significant progress in X. This work proposes a framework for X.
+
+We introduce a novel architecture consisting of X. The model is trained on X using X.
+
+Evaluation on X shows that our approach outperforms existing methods by 4%. Code is available at X.

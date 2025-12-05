@@ -1,0 +1,5 @@
+We investigate the problem of text classification in the context of real-time applications. Our analysis reveals important insights about the relationship between X and X.
+
+The experimental results demonstrate that X. Statistical analysis confirms significance with p < 0.02.
+
+These findings have implications for X. We discuss limitations and propose directions for future research.

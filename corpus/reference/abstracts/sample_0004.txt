@@ -1,0 +1,5 @@
+Cet article présente une nouvelle approche de la reconnaissance d'entités nommées utilisant des réseaux de neurones graphiques. Nous démontrons que notre méthode atteint des performances de pointe sur les benchmarks standards.
+
+Nos expériences montrent une amélioration de 15% par rapport aux approches de référence. L'algorithme proposé a une complexité temporelle O(n log n) et une complexité spatiale O(n).
+
+Nous validons notre approche sur le jeu de données X, atteignant un score BLEU de 34. Les travaux futurs exploreront les applications à X.

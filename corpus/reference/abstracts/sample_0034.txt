@@ -1,0 +1,5 @@
+Nous étudions le problème de la reconnaissance d'entités nommées dans le contexte de des contextes multilingues. Notre analyse révèle des informations importantes sur la relation entre X et X.
+
+Les résultats expérimentaux démontrent que X. L'analyse statistique confirme la significativité avec p < 0,01.
+
+Ces résultats ont des implications pour X. Nous discutons des limitations et proposons des directions pour les recherches futures.

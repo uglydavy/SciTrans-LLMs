@@ -1,0 +1,5 @@
+Cet article présente une nouvelle approche de la réponse aux questions utilisant l'apprentissage par renforcement. Nous démontrons que notre méthode atteint des performances de pointe sur les benchmarks standards.
+
+Nos expériences montrent une amélioration de 11% par rapport aux approches de référence. L'algorithme proposé a une complexité temporelle O(n log n) et une complexité spatiale O(n).
+
+Nous validons notre approche sur le jeu de données X, atteignant un score BLEU de 35. Les travaux futurs exploreront les applications à X.

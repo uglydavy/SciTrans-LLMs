@@ -1,0 +1,5 @@
+This paper presents a novel approach to question answering using contrastive learning. We demonstrate that our method achieves state of the art performance on standard benchmarks.
+
+Our experiments show an improvement of 7% over baseline approaches. The proposed algorithm has time complexity O(n log n) and space complexity O(n).
+
+We validate our approach on the MNLI dataset, achieving a BLEU score of 43. Future work will explore applications to X.
