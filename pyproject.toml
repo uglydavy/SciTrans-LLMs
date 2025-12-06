@@ -35,8 +35,12 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     
-    # PDF processing
+    # PDF processing & layout
     "PyMuPDF>=1.23.0",
+    "pdfminer.six>=20231228",
+    "ultralytics>=8.1.0",
+    "pillow>=10.0.0",
+    "magic-pdf>=0.7.0",
     
     # Modern GUI
     "nicegui>=1.4.0",
@@ -56,9 +60,6 @@ dependencies = [
 # LLM backends
 openai = ["openai>=1.0.0"]
 all-llm = ["openai>=1.0.0", "anthropic>=0.18.0"]
-
-# PDF layout detection
-layout = ["ultralytics>=8.1.0", "pillow>=10.0.0"]
 
 # Full installation
 full = [

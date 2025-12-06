@@ -115,45 +115,23 @@ python -m venv .venv
 
 ## 📦 Step 4: Install Dependencies
 
-### Option A: Full Installation (Recommended)
+### Recommended (includes DocLayout-YOLO + minerU)
 
-Installs everything including GUI, YOLO, and all LLM backends:
+The base install now ships with high-fidelity extraction: PyMuPDF, pdfminer.six, DocLayout-YOLO (ultralytics + Pillow), and magic-pdf (minerU).
 
 ```bash
 # Upgrade pip first
 pip install --upgrade pip
 
-# Install with all features
-pip install -e ".[full]"
-```
-
-### Option B: Minimal Installation
-
-Core features only (no GUI, no YOLO):
-
-```bash
+# Install core + extraction + GUI
 pip install -e .
-```
 
-### Option C: Custom Installation
+# Add LLM providers (optional)
+pip install -e ".[openai]"    # OpenAI family
+pip install -e ".[all-llm]"   # OpenAI + Anthropic
 
-Choose what you need:
-
-```bash
-# Core + OpenAI only
-pip install -e ".[openai]"
-
-# Core + all LLM backends
-pip install -e ".[all-llm]"
-
-# Core + YOLO layout detection
-pip install -e ".[layout]"
-
-# Development tools
+# Dev tools (linting/tests)
 pip install -e ".[dev]"
-
-# Combine multiple extras
-pip install -e ".[openai,layout]"
 ```
 
 **Installation time**: 5-10 minutes depending on your internet speed.
@@ -346,8 +324,8 @@ export OPENAI_API_KEY="sk-..."
 # Install GUI dependencies
 pip install gradio>=4.0.0
 
-# Or install full package
-pip install -e ".[full]"
+# Or reinstall core package (includes NiceGUI)
+pip install -e . --upgrade
 ```
 
 ### Issue: PDF parsing fails
@@ -386,7 +364,7 @@ cd /path/to/SciTrans-LLMs
 git pull origin main
 
 # Reinstall (in case dependencies changed)
-pip install -e ".[full]" --upgrade
+pip install -e . --upgrade
 ```
 
 ---
@@ -437,7 +415,7 @@ If you encounter issues not covered here:
 - [ ] Python 3.9+ installed
 - [ ] Repository cloned
 - [ ] Virtual environment created and activated
-- [ ] Dependencies installed (`pip install -e ".[full]"`)
+- [ ] Dependencies installed (`pip install -e .`)
 - [ ] `scitrans --version` works
 - [ ] `scitrans info` shows available backends
 - [ ] `scitrans demo` runs successfully

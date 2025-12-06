@@ -49,9 +49,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-# With all features
-pip install -e ".[full]"
+# Add LLM providers (optional)
+pip install -e ".[openai]"   # OpenAI family
+pip install -e ".[all-llm]"  # OpenAI + Anthropic
 ```
+
+> Extraction stack is now mandatory out of the box: `pdfminer.six`, `ultralytics` (DocLayout-YOLO with `data/layout/layout_model.pt`), and `magic-pdf` (minerU). Ensure your environment satisfies PyTorch/Ultralytics requirements.
 
 ## Usage Examples
 

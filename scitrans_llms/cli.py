@@ -129,10 +129,6 @@ def translate(
         False, "--interactive",
         help="Interactive mode: review translations before finalizing",
     ),
-    use_mineru: bool = typer.Option(
-        False, "--mineru",
-        help="Use minerU for PDF extraction (better quality)",
-    ),
     preserve_structure: bool = typer.Option(
         True, "--preserve-structure/--no-preserve-structure",
         help="Preserve section numbers and bullet points",
@@ -204,10 +200,8 @@ def translate(
                     input_file,
                     source_lang=source_lang,
                     target_lang=target_lang,
-                    use_mineru=use_mineru,
                 )
-                extractor = "minerU" if use_mineru else "PyMuPDF"
-                console.print(f"[green]Parsed PDF ({extractor}):[/] {len(doc.all_blocks)} blocks from {input_file}")
+                console.print(f"[green]Parsed PDF (high-fidelity):[/] {len(doc.all_blocks)} blocks from {input_file}")
             except ImportError:
                 console.print("[yellow]PDF parsing requires PyMuPDF. Falling back to text mode.[/]")
                 text = input_file.read_text(encoding="utf-8")

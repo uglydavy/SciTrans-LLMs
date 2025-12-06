@@ -472,6 +472,7 @@ body.body--light .card-title { color:#000; }
                         # Translation Settings Card
                         with ui.element('div').classes('card'):
                             ui.label('Translation Settings').classes('card-title')
+                            ui.label('High-fidelity extraction uses DocLayout-YOLO + minerU automatically.').classes('text-xs opacity-70 mb-2')
                             
                             # Direction toggle
                             with ui.row().classes('w-full gap-2 mb-2'):
@@ -493,15 +494,16 @@ body.body--light .card-title { color:#000; }
                                 ).classes('flex-grow').props('dense')
                                 pages_custom = ui.input(placeholder='1-5', label='Custom').classes('w-24').props('dense')
                             
-                            quality_sel = ui.select(
-                                {1: '1 pass', 2: '2 passes', 3: '3 passes'},
-                                value=2, label='Quality'
-                            ).classes('w-full').props('dense')
-                            
-                            candidates_sel = ui.select(
-                                {1: '1 candidate', 3: '3 candidates', 5: '5 candidates'},
-                                value=3, label='Candidates'
-                            ).classes('w-full').props('dense')
+                            with ui.expansion('Advanced quality & reranking', icon='tune').classes('w-full').props('dense'):
+                                quality_sel = ui.select(
+                                    {1: '1 pass', 2: '2 passes', 3: '3 passes'},
+                                    value=2, label='Quality passes'
+                                ).classes('w-full').props('dense')
+                                
+                                candidates_sel = ui.select(
+                                    {1: '1 candidate', 3: '3 candidates', 5: '5 candidates'},
+                                    value=3, label='Candidates (rerank)'
+                                ).classes('w-full').props('dense')
                         
                         # Options Card
                         with ui.element('div').classes('card'):
@@ -688,7 +690,6 @@ body.body--light .card-title { color:#000; }
                             pages=pages_val,
                             quality_loops=int(quality_sel.value),
                             enable_rerank=True,
-                            use_mineru=True,
                             num_candidates=int(candidates_sel.value),
                             progress=cb
                         ))

@@ -389,13 +389,13 @@ def translate_document(
     preserve_figures: bool = True,
     quality_loops: int = 3,
     enable_rerank: bool = True,
-    use_mineru: bool = True,  # MinerU enforced by default
     num_candidates: int | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """Translate a PDF document and save the result.
     
-    This is the main entry point for the GUI.
+    This is the main entry point for the GUI. Extraction uses DocLayout-YOLO
+    (no heuristic fallback) with minerU as the high-quality fallback path.
     
     Args:
         input_path: Path to input PDF
@@ -406,7 +406,6 @@ def translate_document(
         preserve_figures: Whether to preserve figures/formulas
         quality_loops: Number of refinement loops
         enable_rerank: Whether to enable candidate reranking
-        use_mineru: Whether to use MinerU for extraction (default True)
         progress: Optional progress callback
         
     Returns:
@@ -448,8 +447,6 @@ def translate_document(
         pages=page_list,
         source_lang=source_lang,
         target_lang=target_lang,
-        use_mineru=use_mineru,
-        use_pdfminer=True,  # Use PDFMiner for better block extraction
     )
     
     # Configure pipeline

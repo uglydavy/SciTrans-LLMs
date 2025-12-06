@@ -244,7 +244,6 @@ def translate_pdf(
             pages=page_range,
             quality_loops=quality_passes,
             enable_rerank=True,
-            use_mineru=True,
             num_candidates=num_candidates,
             progress=log_progress
         )

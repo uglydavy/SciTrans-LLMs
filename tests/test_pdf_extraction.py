@@ -12,7 +12,7 @@ Tests cover:
 
 import pytest
 from pathlib import Path
-from scitrans_llms.ingest.pdf import PDFParser
+from scitrans_llms.ingest.pdf import PDFParser, YOLOLayoutDetector
 from scitrans_llms.models import Document, BlockType
 
 
@@ -26,7 +26,10 @@ BERT_PDF = TEST_DATA_DIR / "bert.pdf"
 @pytest.fixture
 def pdf_parser():
     """Create a PDFParser instance."""
-    return PDFParser()
+    detector = YOLOLayoutDetector()
+    if not detector.is_available:
+        pytest.skip("DocLayout-YOLO not available (install ultralytics and weights)")
+    return PDFParser(layout_detector=detector)
 
 
 @pytest.fixture

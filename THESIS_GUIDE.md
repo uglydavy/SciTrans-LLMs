@@ -182,7 +182,7 @@ Table~\ref{tab:contribution} quantifies each component's contribution.
 
 # Install dependencies
 source .venv/bin/activate
-pip install -e ".[full]"
+pip install -e .
 
 # Verify installation
 python3 scripts/quick_test.py
@@ -262,7 +262,7 @@ python3 scripts/collect_corpus.py --source sample --target 30
 
 ### "Missing dependency"
 ```bash
-pip install -e ".[full]"
+pip install -e .
 # Or specific package:
 pip install openai sacrebleu
 ```

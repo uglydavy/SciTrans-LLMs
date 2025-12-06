@@ -95,25 +95,20 @@ Input PDF → Ingestion → Masking → Translation → Refinement → Unmasking
 
 ---
 
-### 3. Masking System (`scitrans_llms/masking.py`, `scitrans_llms/mask.py`)
+### 3. Masking System (`scitrans_llms/masking.py`)
 **Purpose**: Protect non-translatable content with placeholders
 
-**Two Implementations**:
-1. **`masking.py`** (preferred): 
-   - `MaskRegistry`: Stores placeholder → original mappings
-   - `MaskConfig`: Configurable pattern detection
-   - Patterns: LaTeX math, code blocks, URLs, emails, DOIs, section numbers, bullets
-   - Block-level: `mask_block()`, `unmask_block()`
-   - Document-level: `mask_document()`, `unmask_document()`
-   
-2. **`mask.py`** (legacy):
-   - Simpler implementation with formula-focused patterns
-   - Less comprehensive than `masking.py`
+**Implementation**:
+- `masking.py`: 
+  - `MaskRegistry`: Stores placeholder → original mappings
+  - `MaskConfig`: Configurable pattern detection
+  - Patterns: LaTeX math, code blocks, URLs, emails, DOIs, section numbers, bullets
+  - Block-level: `mask_block()`, `unmask_block()`
+  - Document-level: `mask_document()`, `unmask_document()`
 
 **Assessment**:
 - ✅ **Strength**: Comprehensive regex patterns, structured config
 - ✅ **Strength**: Preserves section numbers, bullets, indentation
-- ⚠️ **Issue**: Two masking modules create confusion - should consolidate
 - ⚠️ **Issue**: No post-translation validation that all placeholders were preserved
 - ⚠️ **Issue**: Inline LaTeX commands without delimiters (\alpha, \frac{}) may be missed
 - 📝 **Research**: Critical for Contribution #1 (technical content preservation)
@@ -255,9 +250,9 @@ Input PDF → Ingestion → Masking → Translation → Refinement → Unmasking
 
 **Assessment**:
 - ✅ **Strength**: Detailed layout extraction, multiple detectors
-- ✅ **Strength**: Heuristic detector works without ML dependencies
-- ⚠️ **Issue**: YOLOLayoutDetector not fully integrated (API mismatch)
-- ⚠️ **Issue**: MinerU integration declared but not tested
+- ✅ **Strength**: DocLayout-YOLO enforced for block classification (no heuristic fallback)
+- ⚠️ **Issue**: Requires bundled YOLO weights (`data/layout/layout_model.pt`) and ultralytics
+- ⚠️ **Issue**: MinerU remains fallback; needs validation coverage
 - ⚠️ **Issue**: Two-column layouts, tables, rotated text not validated
 - 📝 **Research**: Critical for Contribution #3 (layout preservation)
 

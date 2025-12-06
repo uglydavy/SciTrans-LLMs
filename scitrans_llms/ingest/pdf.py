@@ -4,10 +4,10 @@ PDF parsing with layout detection.
 This module extracts structured content from PDFs while preserving
 layout information for faithful reconstruction.
 
-Approaches:
+Approach:
 1. PyMuPDF text extraction with coordinate tracking
-2. DocLayout-YOLO for visual layout detection (optional)
-3. Heuristic-based block classification as fallback
+2. DocLayout-YOLO for visual layout detection (required)
+3. MinerU (magic-pdf) as high-quality fallback if YOLO/text extraction fails
 
 The parser produces a Document with:
 - Blocks for each content region (paragraph, heading, figure, etc.)
@@ -17,6 +17,7 @@ The parser produces a Document with:
 
 from __future__ import annotations
 
+import io
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -59,6 +60,7 @@ class PageContent:
     height: float
     spans: list[TextSpan] = field(default_factory=list)
     images: list[dict] = field(default_factory=list)
+    image_bytes: Optional[bytes] = None
 
 
 class LayoutDetector(ABC):
@@ -262,7 +264,7 @@ class YOLOLayoutDetector(LayoutDetector):
                 if default_path.exists():
                     self.model = YOLO(str(default_path))
         except ImportError:
-            pass  # ultralytics not installed
+            self.model = None  # ultralytics not installed
     
     @property
     def is_available(self) -> bool:
@@ -270,24 +272,47 @@ class YOLOLayoutDetector(LayoutDetector):
     
     def detect(self, page: PageContent) -> list[tuple[BoundingBox, BlockType]]:
         """Run YOLO detection on page image."""
-        if not self.is_available:
-            # Fall back to heuristic
-            return HeuristicLayoutDetector().detect(page)
+        if not self.model:
+            raise RuntimeError(
+                "DocLayout-YOLO model not loaded. Install `ultralytics` and ensure "
+                "data/layout/layout_model.pt is present."
+            )
+        if not page.image_bytes:
+            raise RuntimeError("Page image bytes are required for YOLO detection.")
         
-        try:
-            # Import YOLO predictor
-            from scitrans_llms.yolo.predictor import LayoutPredictor
-            from PIL import Image
-            import tempfile
-            import fitz  # PyMuPDF
+        from PIL import Image
+        
+        image = Image.open(io.BytesIO(page.image_bytes))
+        detections = []
+        
+        results = self.model.predict(image, verbose=False)
+        for result in results:
+            if not hasattr(result, "boxes") or result.boxes is None:
+                continue
+            xyxy = result.boxes.xyxy.tolist()
+            classes = result.boxes.cls.tolist()
+            names = result.names or {}
             
-            # Note: We need the actual PDF page object to render
-            # Since PageContent doesn't store the original page, we need to pass it differently
-            # For now, use heuristic detection as YOLO requires restructuring the API
-            # TODO: Refactor to pass PDF page object or image path directly
-            return HeuristicLayoutDetector().detect(page)
-        except Exception:
-            return HeuristicLayoutDetector().detect(page)
+            for coords, cls_idx in zip(xyxy, classes):
+                label = names.get(int(cls_idx))
+                if not label:
+                    continue
+                block_type = self.LABEL_MAP.get(label.lower())
+                if not block_type:
+                    continue
+                x0, y0, x1, y1 = coords
+                detections.append((
+                    BoundingBox(
+                        x0=float(x0),
+                        y0=float(y0),
+                        x1=float(x1),
+                        y1=float(y1),
+                        page=page.page_num,
+                    ),
+                    block_type,
+                ))
+        
+        return detections
     
     # Class mapping from YOLO labels to BlockType
     LABEL_MAP = {
@@ -321,7 +346,7 @@ class PDFParser:
         extract_images: bool = True,
         merge_spans: bool = True,
     ):
-        self.layout_detector = layout_detector or HeuristicLayoutDetector()
+        self.layout_detector = layout_detector or YOLOLayoutDetector()
         self.extract_images = extract_images
         self.merge_spans = merge_spans
     
@@ -391,6 +416,13 @@ class PDFParser:
             width=page.rect.width,
             height=page.rect.height,
         )
+        
+        # Render page once for YOLO detection
+        try:
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.2, 1.2))
+            content.image_bytes = pix.tobytes("png")
+        except Exception:
+            content.image_bytes = None
         
         # Extract text with detailed info
         blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
@@ -940,9 +972,6 @@ def parse_pdf(
     pages: Optional[list[int]] = None,
     source_lang: str = "en",
     target_lang: str = "fr",
-    use_yolo: bool = False,
-    use_mineru: bool = False,
-    use_pdfminer: bool = True,  # Default to better extraction
 ) -> Document:
     """Convenience function to parse a PDF.
     
@@ -951,40 +980,30 @@ def parse_pdf(
         pages: Optional list of page numbers (0-indexed)
         source_lang: Source language
         target_lang: Target language
-        use_yolo: Whether to use YOLO layout detection
-        use_mineru: Whether to use minerU for extraction (requires Python 3.10+)
-        use_pdfminer: Whether to use pdfminer for better extraction (default True)
         
     Returns:
         Parsed Document
     """
-    # Try minerU first if requested (requires Python 3.10+)
-    if use_mineru:
-        try:
-            parser = MinerUPDFParser()
-            if parser.available:
-                return parser.parse(pdf_path, pages, source_lang, target_lang)
-        except Exception:
-            pass
+    last_error: Exception | None = None
     
-    # Use pdfminer for better layout extraction (default)
-    if use_pdfminer:
+    # Preferred: PyMuPDF + pdfminer text with DocLayout-YOLO classification
+    try:
+        parser = PDFParser(layout_detector=YOLOLayoutDetector())
+        return parser.parse(pdf_path, pages, source_lang, target_lang)
+    except Exception as e:
+        last_error = e
+    
+    # High-quality fallback: minerU (requires magic-pdf)
+    if MINERU_AVAILABLE:
         try:
-            parser = PDFMinerParser()
-            return parser.parse(pdf_path, pages, source_lang, target_lang)
+            return MinerUPDFParser().parse(pdf_path, pages, source_lang, target_lang)
         except Exception as e:
-            print(f"PDFMiner extraction failed: {e}, falling back to PyMuPDF")
+            last_error = e
     
-    # Fallback to PyMuPDF with optional YOLO
-    if use_yolo:
-        detector = YOLOLayoutDetector()
-        if not detector.is_available:
-            detector = HeuristicLayoutDetector()
-    else:
-        detector = HeuristicLayoutDetector()
-    
-    parser = PDFParser(layout_detector=detector)
-    return parser.parse(pdf_path, pages, source_lang, target_lang)
+    raise RuntimeError(
+        "PDF extraction failed. Ensure DocLayout-YOLO weights are present "
+        "and magic-pdf (minerU) is installed."
+    ) from last_error
 
 
 # Compatibility layer for old API
