@@ -104,7 +104,7 @@ class FontMapper:
 @dataclass
 class RenderConfig:
     """Configuration for PDF rendering."""
-    mode: str = "hybrid"  # "bbox", "search", or "hybrid"
+    mode: str = "bbox"  # "bbox", "search", or "hybrid"
     preserve_images: bool = True
     adjust_font_size: bool = True
     min_font_size: float = 6.0
@@ -166,13 +166,12 @@ class PDFRenderer:
         has_bbox = any(block.bbox for block in document.all_blocks if block.is_translatable)
         
         if self.config.mode == "bbox" and has_bbox:
-            self._render_bbox_mode(doc, blocks_by_page)
+            self._render_bbox_overlay(doc, blocks_by_page)
         elif self.config.mode == "search":
             self._render_search_mode(doc, document)
         else:  # hybrid
-            # Try bbox first, then search for remaining
             if has_bbox:
-                self._render_bbox_mode(doc, blocks_by_page)
+                self._render_bbox_overlay(doc, blocks_by_page)
             self._render_search_mode(doc, document, only_unhandled=True)
         
         # Save output
@@ -200,8 +199,8 @@ class PDFRenderer:
         
         return blocks_by_page
     
-    def _render_bbox_mode(self, doc, blocks_by_page: Dict[int, List[Block]]):
-        """Render using bounding box positions."""
+    def _render_bbox_overlay(self, doc, blocks_by_page: Dict[int, List[Block]]):
+        """Render using bounding boxes by overlaying translated text."""
         import fitz
         
         for page_num, blocks in blocks_by_page.items():
@@ -209,7 +208,9 @@ class PDFRenderer:
                 continue
             
             page = doc[page_num]
+            replacements = []
             
+            # First pass: mark regions for redaction
             for block in blocks:
                 if not block.is_translatable or not block.translated_text:
                     self._stats["skipped"] += 1
@@ -220,16 +221,37 @@ class PDFRenderer:
                     continue
                 
                 try:
-                    self._replace_block_bbox(page, block)
-                    self._stats["replaced"] += 1
-                except Exception as e:
+                    bbox = block.bbox
+                    rect = fitz.Rect(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
+                    rect = rect + fitz.Rect(-1, -1, 1, 1)
+                    
+                    font_size = self._calculate_font_size(block, rect)
+                    
+                    # Mark redaction to remove original text
+                    page.add_redact_annot(rect, fill=self.config.background_color)
+                    replacements.append((rect, block.translated_text, font_size))
+                except Exception:
                     self._stats["errors"] += 1
             
-            # Apply all redactions for this page
+            # Apply redactions to remove original text
             try:
                 page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
             except Exception:
                 pass
+            
+            # Second pass: insert translated text
+            for rect, text, font_size in replacements:
+                try:
+                    page.insert_textbox(
+                        rect,
+                        text,
+                        fontsize=font_size,
+                        fontname=self.config.fallback_font,
+                        color=self.config.text_color,
+                    )
+                    self._stats["replaced"] += 1
+                except Exception:
+                    self._stats["errors"] += 1
     
     def _replace_block_bbox(self, page, block: Block):
         """Replace a single block using its bounding box."""

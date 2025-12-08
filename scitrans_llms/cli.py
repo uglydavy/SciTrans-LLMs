@@ -151,6 +151,13 @@ def translate(
             glossary = get_default_glossary()
             console.print(f"[green]Using default glossary:[/] {len(glossary)} terms")
     
+    # Enforce real translators for user-facing runs
+    if backend in {"dummy", "dictionary"}:
+        raise typer.BadParameter(
+            "The 'dummy' and 'dictionary' translators are test-only. "
+            "Use a real backend: openai, deepseek, anthropic, free, googlefree, huggingface, ollama, or google."
+        )
+    
     # Configure pipeline
     translator_kwargs = {}
     if model:
@@ -276,14 +283,22 @@ def translate(
             if output_file.suffix.lower() == ".pdf" and input_file and input_file.suffix.lower() == ".pdf":
                 try:
                     from scitrans_llms.render import render_pdf
-                    # BUG FIX: Use result.document (translated) not doc (original)
-                    render_pdf(result.document, input_file, output_file)
+                    import fitz
+                    # Use search mode for higher hit-rate on real PDFs
+                    render_pdf(result.document, input_file, output_file, mode="search")
+                    # Verify rendered PDF has text
+                    with fitz.open(str(output_file)) as out_doc:
+                        extracted = "".join(page.get_text() for page in out_doc)
+                    if not extracted.strip():
+                        raise RuntimeError("Rendered PDF contains no text after translation.")
                     console.print(f"\n[green]Saved PDF to:[/] {output_file}")
-                except ImportError:
+                    console.print(f"[dim]Preview:[/] {extracted[:300].replace('\\n', ' ')}{'...' if len(extracted)>300 else ''}")
+                except Exception as e:
+                    console.print(f"[red]PDF rendering/verification failed:[/] {e}")
                     # Fallback to text
                     output_file = output_file.with_suffix(".txt")
                     output_file.write_text(result.translated_text, encoding="utf-8")
-                    console.print(f"\n[yellow]PDF rendering unavailable. Saved text to:[/] {output_file}")
+                    console.print(f"\n[yellow]Saved text to:[/] {output_file}")
             else:
                 output_file.write_text(result.translated_text, encoding="utf-8")
                 console.print(f"\n[green]Saved to:[/] {output_file}")
