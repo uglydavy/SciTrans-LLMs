@@ -112,3 +112,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning:importlib._bootstrap:228",
+    "ignore:builtin type Swig:DeprecationWarning",
+]
