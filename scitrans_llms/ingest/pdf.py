@@ -260,37 +260,45 @@ class YOLOLayoutDetector(LayoutDetector):
         
         Uses doclayout_yolo.YOLOv10 for DocLayout-YOLO models,
         which is the correct loader for the official model weights.
-        """
-        model_path = self.model_path
-        if not model_path:
-            # Try default location
-            default_path = Path(__file__).parent.parent / "data" / "layout" / "layout_model.pt"
-            if default_path.exists() and default_path.stat().st_size > 10000:
-                model_path = str(default_path)
         
-        if not model_path:
+        Tries paths in order:
+        1. User-provided model_path (if valid)
+        2. Default location (data/layout/layout_model.pt)
+        """
+        default_path = Path(__file__).parent.parent / "data" / "layout" / "layout_model.pt"
+        
+        # Build list of paths to try
+        paths_to_try = []
+        if self.model_path:
+            paths_to_try.append(self.model_path)
+        if default_path.exists() and default_path.stat().st_size > 10000:
+            paths_to_try.append(str(default_path))
+        
+        if not paths_to_try:
             self.model = None
             return
         
-        # Try doclayout_yolo first (correct loader for DocLayout-YOLO models)
-        try:
-            from doclayout_yolo import YOLOv10
-            self.model = YOLOv10(model_path)
-            return
-        except ImportError:
-            pass  # doclayout_yolo not installed
-        except Exception:
-            pass  # Model incompatible
-        
-        # Fallback to ultralytics (for standard YOLO models)
-        try:
-            from ultralytics import YOLO
-            self.model = YOLO(model_path)
-            return
-        except ImportError:
-            pass  # ultralytics not installed
-        except Exception:
-            pass  # Model incompatible
+        # Try each path with each loader
+        for model_path in paths_to_try:
+            # Try doclayout_yolo first (correct loader for DocLayout-YOLO models)
+            try:
+                from doclayout_yolo import YOLOv10
+                self.model = YOLOv10(model_path)
+                return
+            except ImportError:
+                pass  # doclayout_yolo not installed
+            except Exception:
+                pass  # Model incompatible or path invalid
+            
+            # Fallback to ultralytics (for standard YOLO models)
+            try:
+                from ultralytics import YOLO
+                self.model = YOLO(model_path)
+                return
+            except ImportError:
+                pass  # ultralytics not installed
+            except Exception:
+                pass  # Model incompatible or path invalid
         
         self.model = None
     
