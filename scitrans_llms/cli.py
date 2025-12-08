@@ -1010,6 +1010,72 @@ def _setup_glossary(glossary_path: Path, force: bool = False):
 
 
 @app.command()
+def samples(
+    list_only: bool = typer.Option(False, "--list", "-l", help="List available samples without downloading"),
+):
+    """Download sample scientific PDFs for testing.
+    
+    Downloads publicly available papers from arXiv for testing
+    the translation pipeline.
+    
+    Examples:
+        scitrans samples           # Download all samples
+        scitrans samples --list    # Just list available samples
+    """
+    import urllib.request
+    import ssl
+    
+    PAPERS = {
+        "attention": ("https://arxiv.org/pdf/1706.03762.pdf", "Attention Is All You Need"),
+        "bert": ("https://arxiv.org/pdf/1810.04805.pdf", "BERT Pre-training"),
+        "resnet": ("https://arxiv.org/pdf/1512.03385.pdf", "Deep Residual Learning"),
+        "dropout": ("https://arxiv.org/pdf/1207.0580.pdf", "Dropout Regularization"),
+    }
+    
+    samples_dir = Path(__file__).parent.parent / "samples"
+    
+    if list_only:
+        console.print("\n[bold]Available Sample Papers:[/]\n")
+        for key, (url, name) in PAPERS.items():
+            local = samples_dir / f"{key}.pdf"
+            status = "[green]✓[/]" if local.exists() else "[dim]○[/]"
+            console.print(f"  {status} {key}: {name}")
+        console.print(f"\n  Location: {samples_dir}")
+        return
+    
+    samples_dir.mkdir(exist_ok=True)
+    console.print(f"\n[bold]Downloading sample PDFs to {samples_dir}...[/]\n")
+    
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    
+    for key, (url, name) in PAPERS.items():
+        dest = samples_dir / f"{key}.pdf"
+        
+        if dest.exists():
+            console.print(f"  [dim]Skipping {key}.pdf (exists)[/]")
+            continue
+        
+        console.print(f"  Downloading {key}.pdf ({name})...")
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'Mozilla/5.0 (compatible; SciTrans-LLMs)'}
+            )
+            with urllib.request.urlopen(request, context=ctx, timeout=60) as response:
+                data = response.read()
+                dest.write_bytes(data)
+                console.print(f"    [green]✓[/] Saved ({len(data)/1024/1024:.1f} MB)")
+        except Exception as e:
+            console.print(f"    [red]✗[/] Failed: {e}")
+    
+    console.print(f"\n[green]Done![/] Samples in: {samples_dir}")
+    console.print("\nTo translate a sample:")
+    console.print(f"  [cyan]scitrans translate -i {samples_dir}/attention.pdf -o attention_fr.pdf[/]")
+
+
+@app.command()
 def gui(
     port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
     share: bool = typer.Option(False, "--share", "-s", help="Share publicly (if supported)"),

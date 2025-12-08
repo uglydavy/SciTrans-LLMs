@@ -639,16 +639,17 @@ def launch(port: int = 7860, share: bool = False):
                 state['is_translating'] = False
                 translate_btn.enable()
     
-    # Run the app
+    # Run the app - disable reload to avoid multiprocessing issues
     ui.run(
         port=port,
         title='SciTrans-LLMs',
         favicon='🌐',
         dark=True,
         storage_secret='scitrans_secret_key_12345',
-        show=False,
+        show=True,
+        reload=False,
     )
 
 
-if __name__ == '__main__':
+if __name__ in {"__main__", "__mp_main__"}:
     launch()
