@@ -256,25 +256,43 @@ class YOLOLayoutDetector(LayoutDetector):
         self._load_model()
     
     def _load_model(self):
-        """Load YOLO model if available."""
+        """Load YOLO model if available.
+        
+        Uses doclayout_yolo.YOLOv10 for DocLayout-YOLO models,
+        which is the correct loader for the official model weights.
+        """
+        model_path = self.model_path
+        if not model_path:
+            # Try default location
+            default_path = Path(__file__).parent.parent / "data" / "layout" / "layout_model.pt"
+            if default_path.exists() and default_path.stat().st_size > 10000:
+                model_path = str(default_path)
+        
+        if not model_path:
+            self.model = None
+            return
+        
+        # Try doclayout_yolo first (correct loader for DocLayout-YOLO models)
+        try:
+            from doclayout_yolo import YOLOv10
+            self.model = YOLOv10(model_path)
+            return
+        except ImportError:
+            pass  # doclayout_yolo not installed
+        except Exception:
+            pass  # Model incompatible
+        
+        # Fallback to ultralytics (for standard YOLO models)
         try:
             from ultralytics import YOLO
-            if self.model_path and Path(self.model_path).exists():
-                self.model = YOLO(self.model_path)
-            else:
-                # Try default location
-                default_path = Path(__file__).parent.parent / "data" / "layout" / "layout_model.pt"
-                if default_path.exists():
-                    # Check file size - placeholder files are tiny
-                    if default_path.stat().st_size > 10000:  # > 10KB
-                        self.model = YOLO(str(default_path))
-                    else:
-                        self.model = None  # Placeholder file, skip
+            self.model = YOLO(model_path)
+            return
         except ImportError:
-            self.model = None  # ultralytics not installed
+            pass  # ultralytics not installed
         except Exception:
-            # Model file corrupted or incompatible
-            self.model = None
+            pass  # Model incompatible
+        
+        self.model = None
     
     @property
     def is_available(self) -> bool:
