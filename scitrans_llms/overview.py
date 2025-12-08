@@ -56,7 +56,7 @@ def get_component_map() -> List[Component]:
         Component(
             name="Masking",
             responsibility="Protect formulas, numbers, and inline code before translation then restore them.",
-            key_files=["scitrans_llms/mask.py"],
+            key_files=["scitrans_llms/masking.py"],
             notes="Used by both CLI and GUI to avoid corrupting structured content.",
         ),
         Component(
