@@ -38,9 +38,9 @@ def _check_dependency(module: str, friendly: str, required: bool = False) -> Che
 def _check_layout_model() -> CheckResult:
     if not LAYOUT_MODEL.exists():
         return CheckResult(
-            "Layout model",
+            "YOLO Layout Model",
             "warn",
-            "Placeholder created; run setup --yolo to download/train DocLayout weights.",
+            "Model not found. Install DocLayout-YOLO weights for best extraction quality.",
         )
     try:
         size = LAYOUT_MODEL.stat().st_size
@@ -48,11 +48,36 @@ def _check_layout_model() -> CheckResult:
         size = 0
     if size <= 1024:
         return CheckResult(
-            "Layout model",
+            "YOLO Layout Model",
             "warn",
-            "Placeholder weights detected; run setup --yolo to improve layout detection.",
+            "Placeholder weights detected (< 1KB). Need real model weights.",
         )
-    return CheckResult("Layout model", "ok", "DocLayout weights detected")
+    # Check if the model can actually be loaded
+    if _module_available("ultralytics"):
+        return CheckResult(
+            "YOLO Layout Model", 
+            "ok", 
+            f"DocLayout weights ready ({size / 1024 / 1024:.1f} MB)"
+        )
+    return CheckResult(
+        "YOLO Layout Model",
+        "warn",
+        "Model present but ultralytics not installed"
+    )
+
+
+def _check_mineru() -> CheckResult:
+    if _module_available("magic_pdf"):
+        return CheckResult(
+            "MinerU (magic-pdf)",
+            "ok",
+            "Available for high-quality PDF extraction"
+        )
+    return CheckResult(
+        "MinerU (magic-pdf)",
+        "warn",
+        "Not installed. pip install magic-pdf for better complex PDF handling"
+    )
 
 
 def _check_glossary() -> CheckResult:
@@ -95,15 +120,33 @@ def collect_diagnostics() -> List[CheckResult]:
     """Run a series of lightweight checks and return their results."""
 
     checks: List[CheckResult] = []
+    
+    # Core dependencies
     checks.append(_check_dependency("fitz", "PyMuPDF", required=True))
-    checks.append(_check_dependency("ultralytics", "ultralytics/YOLO"))
-    checks.append(_check_dependency("torch", "PyTorch"))
-    checks.append(_check_dependency("gradio", "Gradio"))
+    checks.append(_check_dependency("pdfminer.six", "PDFMiner"))
     checks.append(_check_dependency("requests", "Requests", required=True))
-    checks.append(_check_dependency("sacrebleu", "SacreBLEU"))
+    
+    # Layout detection
+    checks.append(_check_dependency("ultralytics", "Ultralytics (YOLO)"))
     checks.append(_check_layout_model())
+    checks.append(_check_mineru())
+    
+    # ML/AI backends
+    checks.append(_check_dependency("torch", "PyTorch"))
+    checks.append(_check_dependency("openai", "OpenAI SDK"))
+    checks.append(_check_dependency("anthropic", "Anthropic SDK"))
+    
+    # Evaluation
+    checks.append(_check_dependency("sacrebleu", "SacreBLEU"))
+    
+    # GUI
+    checks.append(_check_dependency("nicegui", "NiceGUI"))
+    checks.append(_check_dependency("gradio", "Gradio"))
+    
+    # Resources
     checks.append(_check_glossary())
     checks.append(_check_keys())
+    
     return checks
 
 

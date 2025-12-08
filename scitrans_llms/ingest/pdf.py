@@ -30,8 +30,11 @@ from scitrans_llms.models import (
 
 try:
     import magic_pdf
+    # Check if the required submodules are actually available
+    # MinerU v1.3+ has a different API and requires doclayout_yolo
+    from magic_pdf.data.data_reader_writer import FileBasedDataReader
     MINERU_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     MINERU_AVAILABLE = False
 
 
@@ -262,9 +265,16 @@ class YOLOLayoutDetector(LayoutDetector):
                 # Try default location
                 default_path = Path(__file__).parent.parent / "data" / "layout" / "layout_model.pt"
                 if default_path.exists():
-                    self.model = YOLO(str(default_path))
+                    # Check file size - placeholder files are tiny
+                    if default_path.stat().st_size > 10000:  # > 10KB
+                        self.model = YOLO(str(default_path))
+                    else:
+                        self.model = None  # Placeholder file, skip
         except ImportError:
             self.model = None  # ultralytics not installed
+        except Exception:
+            # Model file corrupted or incompatible
+            self.model = None
     
     @property
     def is_available(self) -> bool:
@@ -655,7 +665,8 @@ class MinerUPDFParser:
     - Reading order detection
     - Structure preservation
     
-    Falls back to PyMuPDF if minerU is not available.
+    Note: MinerU v1.3+ requires doclayout_yolo model. If unavailable,
+    falls back to PyMuPDF + PDFMiner.
     """
     
     def __init__(self):
@@ -680,41 +691,162 @@ class MinerUPDFParser:
             Parsed Document
         """
         if not self.available:
-            # Fall back to PyMuPDF parser
-            return PDFParser().parse(pdf_path, pages, source_lang, target_lang)
+            raise ImportError("MinerU not available")
         
+        pdf_path = Path(pdf_path)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+        
+        # Try the new MinerU API (v1.3+)
         try:
-            from magic_pdf.pipe.UNIPipe import UNIPipe
-            from magic_pdf.pipe.OCRPipe import OCRPipe
-            import json
+            return self._parse_with_new_api(pdf_path, pages, source_lang, target_lang)
+        except (ImportError, ModuleNotFoundError):
+            pass
+        
+        # Try the old MinerU API (v0.x-1.2)
+        try:
+            return self._parse_with_old_api(pdf_path, pages, source_lang, target_lang)
+        except (ImportError, ModuleNotFoundError) as e:
+            raise ImportError(f"MinerU API not compatible: {e}")
+    
+    def _parse_with_new_api(
+        self,
+        pdf_path: Path,
+        pages: Optional[list[int]],
+        source_lang: str,
+        target_lang: str,
+    ) -> Document:
+        """Parse using MinerU v1.3+ API."""
+        from magic_pdf.data.data_reader_writer import FileBasedDataReader
+        from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+        from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+        
+        import tempfile
+        import json
+        
+        # Read PDF
+        reader = FileBasedDataReader("")
+        pdf_bytes = pdf_path.read_bytes()
+        
+        # Analyze document
+        with tempfile.TemporaryDirectory() as tmpdir:
+            writer = FileBasedDataWriter(tmpdir)
             
-            pdf_path = Path(pdf_path)
-            if not pdf_path.exists():
-                raise FileNotFoundError(f"PDF not found: {pdf_path}")
+            # Run document analysis
+            result = doc_analyze(pdf_bytes, ocr=False)
             
-            # Read PDF bytes
-            pdf_bytes = pdf_path.read_bytes()
+            # Convert to our Document format
+            return self._convert_analysis_result(result, pdf_path, source_lang, target_lang, pages)
+    
+    def _parse_with_old_api(
+        self,
+        pdf_path: Path,
+        pages: Optional[list[int]],
+        source_lang: str,
+        target_lang: str,
+    ) -> Document:
+        """Parse using MinerU v0.x-1.2 API."""
+        from magic_pdf.pipe.UNIPipe import UNIPipe
+        from magic_pdf.pipe.OCRPipe import OCRPipe
+        
+        pdf_bytes = pdf_path.read_bytes()
+        
+        # Try UNI pipe first (faster, no OCR)
+        try:
+            pipe = UNIPipe(pdf_bytes, {})
+            pipe.pipe_classify()
+            pipe.pipe_parse()
+            result = pipe.pipe_mk_markdown()
+        except Exception:
+            # Fall back to OCR pipe if needed
+            pipe = OCRPipe(pdf_bytes, {})
+            pipe.pipe_classify()
+            pipe.pipe_parse()
+            result = pipe.pipe_mk_markdown()
+        
+        return self._convert_mineru_result(result, pdf_path, source_lang, target_lang, pages)
+    
+    def _convert_analysis_result(
+        self,
+        result: dict,
+        pdf_path: Path,
+        source_lang: str,
+        target_lang: str,
+        pages: Optional[list[int]] = None,
+    ) -> Document:
+        """Convert new API analysis result to Document format."""
+        segments = []
+        all_blocks = []
+        
+        # Process pages from result
+        for page_data in result.get('pages', []):
+            page_num = page_data.get('page_idx', 0)
             
-            # Try UNI pipe first (faster, no OCR)
-            try:
-                pipe = UNIPipe(pdf_bytes, {})
-                pipe.pipe_classify()
-                pipe.pipe_parse()
-                result = pipe.pipe_mk_markdown()
-            except Exception:
-                # Fall back to OCR pipe if needed
-                pipe = OCRPipe(pdf_bytes, {})
-                pipe.pipe_classify()
-                pipe.pipe_parse()
-                result = pipe.pipe_mk_markdown()
+            if pages is not None and page_num not in pages:
+                continue
             
-            # Convert minerU output to our Document format
-            return self._convert_mineru_result(result, pdf_path, source_lang, target_lang, pages)
-            
-        except Exception as e:
-            # If minerU fails, fall back to PyMuPDF
-            print(f"minerU extraction failed: {e}, falling back to PyMuPDF")
-            return PDFParser().parse(pdf_path, pages, source_lang, target_lang)
+            for block_data in page_data.get('blocks', []):
+                text = block_data.get('text', '').strip()
+                if not text:
+                    continue
+                
+                block_type = self._map_block_type(block_data.get('type', 'text'))
+                
+                # Get bounding box if available
+                bbox = None
+                if 'bbox' in block_data:
+                    b = block_data['bbox']
+                    bbox = BoundingBox(
+                        x0=b[0], y0=b[1], x1=b[2], y1=b[3],
+                        page=page_num
+                    )
+                
+                block = Block(
+                    source_text=text,
+                    block_type=block_type,
+                    bbox=bbox,
+                    metadata={"source": "mineru_v2"}
+                )
+                all_blocks.append(block)
+        
+        # Group blocks into segments by page
+        blocks_by_page = {}
+        for block in all_blocks:
+            page = block.bbox.page if block.bbox else 0
+            if page not in blocks_by_page:
+                blocks_by_page[page] = []
+            blocks_by_page[page].append(block)
+        
+        for page_num in sorted(blocks_by_page.keys()):
+            segments.append(Segment(
+                blocks=blocks_by_page[page_num],
+                title=f"Page {page_num + 1}",
+            ))
+        
+        return Document(
+            segments=segments,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            title=pdf_path.stem,
+            metadata={
+                "source_file": str(pdf_path),
+                "extractor": "mineru_v2",
+            }
+        )
+    
+    def _map_block_type(self, mineru_type: str) -> BlockType:
+        """Map MinerU block types to our BlockType enum."""
+        mapping = {
+            'text': BlockType.PARAGRAPH,
+            'title': BlockType.HEADING,
+            'figure': BlockType.FIGURE,
+            'table': BlockType.TABLE,
+            'equation': BlockType.EQUATION,
+            'list': BlockType.LIST_ITEM,
+            'caption': BlockType.CAPTION,
+            'footnote': BlockType.FOOTNOTE,
+        }
+        return mapping.get(mineru_type.lower(), BlockType.PARAGRAPH)
     
     def _convert_mineru_result(
         self,
@@ -972,38 +1104,80 @@ def parse_pdf(
     pages: Optional[list[int]] = None,
     source_lang: str = "en",
     target_lang: str = "fr",
+    prefer_yolo: bool = True,
 ) -> Document:
-    """Convenience function to parse a PDF.
+    """Parse a PDF with automatic method selection.
+    
+    Extraction priority (highest fidelity first):
+    1. PyMuPDF + DocLayout-YOLO (if model weights available)
+    2. MinerU (if magic-pdf installed)
+    3. PyMuPDF + PDFMiner enhanced extraction
+    4. PyMuPDF + Heuristic layout detection
     
     Args:
         pdf_path: Path to PDF file
         pages: Optional list of page numbers (0-indexed)
         source_lang: Source language
         target_lang: Target language
+        prefer_yolo: Whether to try YOLO first (default True)
         
     Returns:
-        Parsed Document
+        Parsed Document with layout-aware blocks
     """
-    last_error: Exception | None = None
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF not found: {pdf_path}")
     
-    # Preferred: PyMuPDF + pdfminer text with DocLayout-YOLO classification
-    try:
-        parser = PDFParser(layout_detector=YOLOLayoutDetector())
-        return parser.parse(pdf_path, pages, source_lang, target_lang)
-    except Exception as e:
-        last_error = e
+    errors: list[str] = []
     
-    # High-quality fallback: minerU (requires magic-pdf)
+    # Method 1: YOLO-based extraction (best for layout detection)
+    if prefer_yolo:
+        yolo_detector = YOLOLayoutDetector()
+        if yolo_detector.is_available:
+            try:
+                parser = PDFParser(layout_detector=yolo_detector)
+                doc = parser.parse(pdf_path, pages, source_lang, target_lang)
+                doc.metadata["extraction_method"] = "yolo"
+                return doc
+            except Exception as e:
+                errors.append(f"YOLO: {e}")
+    
+    # Method 2: MinerU extraction (best for complex PDFs)
     if MINERU_AVAILABLE:
         try:
-            return MinerUPDFParser().parse(pdf_path, pages, source_lang, target_lang)
+            parser = MinerUPDFParser()
+            doc = parser.parse(pdf_path, pages, source_lang, target_lang)
+            doc.metadata["extraction_method"] = "mineru"
+            return doc
         except Exception as e:
-            last_error = e
+            errors.append(f"MinerU: {e}")
     
+    # Method 3: PDFMiner enhanced extraction
+    try:
+        parser = PDFMinerParser()
+        doc = parser.parse(pdf_path, pages, source_lang, target_lang)
+        doc.metadata["extraction_method"] = "pdfminer"
+        return doc
+    except Exception as e:
+        errors.append(f"PDFMiner: {e}")
+    
+    # Method 4: Basic PyMuPDF with heuristics (always available)
+    try:
+        parser = PDFParser(layout_detector=HeuristicLayoutDetector())
+        doc = parser.parse(pdf_path, pages, source_lang, target_lang)
+        doc.metadata["extraction_method"] = "heuristic"
+        return doc
+    except Exception as e:
+        errors.append(f"Heuristic: {e}")
+    
+    # All methods failed
     raise RuntimeError(
-        "PDF extraction failed. Ensure DocLayout-YOLO weights are present "
-        "and magic-pdf (minerU) is installed."
-    ) from last_error
+        f"PDF extraction failed with all methods.\n"
+        f"Errors: {'; '.join(errors)}\n\n"
+        f"For best results, ensure:\n"
+        f"- DocLayout-YOLO weights at data/layout/layout_model.pt\n"
+        f"- magic-pdf installed for MinerU support"
+    )
 
 
 # Compatibility layer for old API

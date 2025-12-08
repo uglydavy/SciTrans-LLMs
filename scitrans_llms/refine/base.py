@@ -322,6 +322,7 @@ class CompositeRefiner(Refiner):
 def create_refiner(
     mode: str = "default",
     glossary: Optional[Glossary] = None,
+    api_key: Optional[str] = None,
 ) -> Refiner:
     """Factory function to create refiners.
     
@@ -329,8 +330,15 @@ def create_refiner(
     - 'none' or 'noop': No refinement
     - 'glossary': Glossary enforcement only
     - 'default': Glossary + placeholder validation
-    - 'llm': LLM-based coherence refinement (when implemented)
+    - 'llm': LLM-based coherence refinement (requires OpenAI API key)
+    - 'full': Glossary + placeholder + LLM refinement (best quality)
+    
+    Args:
+        mode: Refiner mode
+        glossary: Glossary for terminology enforcement
+        api_key: OpenAI API key for LLM refinement (optional, uses env var if not provided)
     """
+    import os
     mode_lower = mode.lower()
     
     if mode_lower in ("none", "noop"):
@@ -346,12 +354,31 @@ def create_refiner(
         ])
     
     elif mode_lower == "llm":
-        # TODO: Implement LLM-based refiner
-        # For now, fall back to default
-        return CompositeRefiner([
+        # Use LLM-based refiner if API key is available
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        if key:
+            from scitrans_llms.refine.llm import LLMRefiner
+            return LLMRefiner(api_key=key)
+        else:
+            # Fall back to default if no API key
+            import warnings
+            warnings.warn("No OpenAI API key found, falling back to glossary refiner")
+            return CompositeRefiner([
+                GlossaryRefiner(default_glossary=glossary),
+                PlaceholderValidator(),
+            ])
+    
+    elif mode_lower == "full":
+        # Full refinement: glossary + placeholder + LLM
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        refiners = [
             GlossaryRefiner(default_glossary=glossary),
             PlaceholderValidator(),
-        ])
+        ]
+        if key:
+            from scitrans_llms.refine.llm import LLMRefiner
+            refiners.append(LLMRefiner(api_key=key))
+        return CompositeRefiner(refiners)
     
     else:
         raise ValueError(f"Unknown refiner mode: {mode}")

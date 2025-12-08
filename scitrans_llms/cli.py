@@ -855,6 +855,161 @@ def corpus(
 
 
 @app.command()
+def setup(
+    yolo: bool = typer.Option(False, "--yolo", help="Download DocLayout-YOLO model weights"),
+    glossary: bool = typer.Option(False, "--glossary", help="Regenerate default glossary"),
+    all_assets: bool = typer.Option(False, "--all", "-a", help="Download all assets"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-download"),
+):
+    """Download and setup model weights and assets.
+    
+    This command helps setup the extraction components:
+    
+    - DocLayout-YOLO: ML-based document layout detection (~25MB)
+    - Default glossary: Scientific terminology for EN-FR translation
+    
+    Examples:
+        scitrans setup --yolo      # Download YOLO model only
+        scitrans setup --all       # Download everything
+        scitrans setup --all -f    # Force re-download all
+    """
+    from scitrans_llms.config import LAYOUT_MODEL, DEFAULT_GLOSSARY
+    
+    if all_assets:
+        yolo = True
+        glossary = True
+    
+    if not yolo and not glossary:
+        console.print("[yellow]No assets specified. Use --yolo, --glossary, or --all[/]")
+        console.print("\nAvailable assets:")
+        console.print("  --yolo      DocLayout-YOLO model for layout detection")
+        console.print("  --glossary  Default scientific glossary")
+        console.print("  --all       Download everything")
+        raise typer.Exit(0)
+    
+    if yolo:
+        _setup_yolo_model(LAYOUT_MODEL, force)
+    
+    if glossary:
+        _setup_glossary(DEFAULT_GLOSSARY, force)
+    
+    console.print("\n[green]Setup complete![/]")
+
+
+def _setup_yolo_model(model_path: Path, force: bool = False):
+    """Download or setup YOLO model weights."""
+    console.print("\n[bold]Setting up DocLayout-YOLO model...[/]")
+    
+    # Check if already exists and is valid
+    if model_path.exists() and model_path.stat().st_size > 10000 and not force:
+        console.print(f"  [green]✓[/] Model already exists at {model_path}")
+        console.print(f"    Size: {model_path.stat().st_size / 1024 / 1024:.1f} MB")
+        return
+    
+    # Ensure directory exists
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Try to download from HuggingFace Hub
+    console.print("  Downloading DocLayout-YOLO weights...")
+    
+    try:
+        # Try using huggingface_hub if available
+        try:
+            from huggingface_hub import hf_hub_download
+            downloaded_path = hf_hub_download(
+                repo_id="juliozhao/DocLayout-YOLO-DocStructBench",
+                filename="doclayout_yolo_docstructbench_imgsz1024.pt",
+                local_dir=str(model_path.parent),
+            )
+            # Rename to our expected name
+            Path(downloaded_path).rename(model_path)
+            console.print(f"  [green]✓[/] Downloaded to {model_path}")
+            console.print(f"    Size: {model_path.stat().st_size / 1024 / 1024:.1f} MB")
+            return
+        except ImportError:
+            pass
+        
+        # Fallback: direct download with requests
+        import requests
+        url = "https://huggingface.co/juliozhao/DocLayout-YOLO-DocStructBench/resolve/main/doclayout_yolo_docstructbench_imgsz1024.pt"
+        
+        response = requests.get(url, stream=True, timeout=60)
+        response.raise_for_status()
+        
+        total_size = int(response.headers.get('content-length', 0))
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Downloading...", total=total_size)
+            
+            with open(model_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    progress.update(task, advance=len(chunk))
+        
+        console.print(f"  [green]✓[/] Downloaded to {model_path}")
+        console.print(f"    Size: {model_path.stat().st_size / 1024 / 1024:.1f} MB")
+        
+    except Exception as e:
+        console.print(f"  [red]✗[/] Download failed: {e}")
+        console.print("\n  Manual download instructions:")
+        console.print("  1. Go to https://huggingface.co/juliozhao/DocLayout-YOLO-DocStructBench")
+        console.print("  2. Download 'doclayout_yolo_docstructbench_imgsz1024.pt'")
+        console.print(f"  3. Place it at: {model_path}")
+
+
+def _setup_glossary(glossary_path: Path, force: bool = False):
+    """Setup default glossary."""
+    console.print("\n[bold]Setting up default glossary...[/]")
+    
+    if glossary_path.exists() and not force:
+        lines = len(glossary_path.read_text().strip().splitlines())
+        console.print(f"  [green]✓[/] Glossary already exists ({lines} entries)")
+        return
+    
+    # Generate default glossary
+    from scitrans_llms.translate.glossary import Glossary, GlossaryEntry
+    
+    default_entries = [
+        ("machine learning", "apprentissage automatique"),
+        ("neural network", "réseau neuronal"),
+        ("artificial intelligence", "intelligence artificielle"),
+        ("deep learning", "apprentissage profond"),
+        ("natural language processing", "traitement automatique du langage"),
+        ("computer vision", "vision par ordinateur"),
+        ("dataset", "jeu de données"),
+        ("algorithm", "algorithme"),
+        ("model", "modèle"),
+        ("training", "entraînement"),
+        ("inference", "inférence"),
+        ("accuracy", "précision"),
+        ("loss function", "fonction de perte"),
+        ("gradient descent", "descente de gradient"),
+        ("backpropagation", "rétropropagation"),
+        ("overfitting", "surapprentissage"),
+        ("regularization", "régularisation"),
+        ("hyperparameter", "hyperparamètre"),
+        ("feature", "caractéristique"),
+        ("embedding", "plongement"),
+    ]
+    
+    glossary = Glossary()
+    for source, target in default_entries:
+        glossary.add(GlossaryEntry(source=source, target=target))
+    
+    glossary_path.parent.mkdir(parents=True, exist_ok=True)
+    glossary.save_csv(glossary_path)
+    
+    console.print(f"  [green]✓[/] Created glossary with {len(glossary)} entries")
+    console.print(f"    Path: {glossary_path}")
+
+
+@app.command()
 def gui(
     port: int = typer.Option(7860, "--port", "-p", help="Port to run GUI on"),
     share: bool = typer.Option(False, "--share", "-s", help="Share publicly (if supported)"),
